@@ -1,18 +1,26 @@
 package com.saucedemo.tests;
 
-// mvn clean test allure:serve
 import com.saucedemo.pages.InventoryPage;
 import com.saucedemo.pages.LoginPage;
 import com.saucedemo.utils.DriverFactory;
+// Добавлено: импорт класса Allure для прикрепления файлов
+import io.qameta.allure.Allure;
 import io.qameta.allure.Description;
 import io.qameta.allure.Epic;
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
+// Добавлено: импорт OutputType для получения скриншота в виде байтов
+import org.openqa.selenium.OutputType;
+// Добавлено: импорт интерфейса TakesScreenshot для создания скриншотов
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+
+// Добавлено: импорт ByteArrayInputStream для передачи скриншота в Allure
+import java.io.ByteArrayInputStream;
 
 @Epic("SauceDemo")
 @Feature("Авторизация")
@@ -27,8 +35,23 @@ public class LoginTest {
         loginPage = new LoginPage(driver);
     }
 
-    @AfterMethod
+    // Изменено: добавлен параметр alwaysRun = true, чтобы скриншот делался даже при падении теста
+    @AfterMethod(alwaysRun = true)
     public void tearDown() {
+        // Добавлено: блок try-catch для безопасного создания скриншота
+        try {
+            // Добавлено: проверка, поддерживает ли драйвер создание скриншотов
+            if (driver instanceof TakesScreenshot) {
+                // Добавлено: получение скриншота в виде массива байт
+                byte[] screenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES);
+                // Добавлено: прикрепление скриншота к отчету Allure с именем "Скриншот"
+                Allure.addAttachment("Скриншот", "image/png", new ByteArrayInputStream(screenshot), ".png");
+            }
+        } catch (Exception e) {
+            // Добавлено: вывод ошибки в консоль, если скриншот не удался
+            e.printStackTrace();
+        }
+        // Существующий код закрытия драйвера
         DriverFactory.quitDriver(driver);
     }
 
