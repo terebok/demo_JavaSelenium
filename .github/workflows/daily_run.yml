@@ -1,43 +1,70 @@
+# Имя пайплайна GitHub Actions
 name: Daily Test Run
-
+# События, запускающие пайплайн
 on:
+  # Настройка расписания
   schedule:
+    # Запуск каждый день в 03:00 UTC (соответствует 06:00 МСК)
     - cron: '0 3 * * *'
+  # Возможность ручного запуска из интерфейса GitHub
   workflow_dispatch:
-
+# Права доступа токена GITHUB_TOKEN
 permissions:
+  # Разрешение на запись в репозиторий (для деплоя отчета)
   contents: write
+  # Разрешение на публикацию GitHub Pages
   pages: write
+  # Разрешение на использование OpenID Connect
   id-token: write
+  # Разрешение на создание Issues
   issues: write
-
+# Блок описания задач
 jobs:
+  # Идентификатор задачи
   test-and-report:
+    # Тип виртуальной машины
     runs-on: ubuntu-latest
+    # Шаги выполнения
     steps:
+      # Шаг 1: Получение кода из репозитория
       - name: Checkout code
+        # Используемое действие
         uses: actions/checkout@v4
-
+      # Шаг 2: Установка JDK
       - name: Set up JDK 17
+        # Используемое действие
         uses: actions/setup-java@v3
+        # Параметры действия
         with:
+          # Версия Java
           java-version: '17'
+          # Дистрибутив Java
           distribution: 'temurin'
+          # Кэширование зависимостей Maven
           cache: maven
-
+      # Шаг 3: Запуск тестов
       - name: Run tests
+        # Команда запуска
         run: mvn clean test
-
+      # Шаг 4: Генерация отчета Allure
       - name: Generate Allure Report
+        # Команда генерации
         run: mvn allure:report
-
+      # Шаг 5: Публикация на GitHub Pages
       - name: Deploy to GitHub Pages
+        # Используемое действие
         uses: peaceiris/actions-gh-pages@v3
+        # Параметры действия
         with:
+          # Токен для доступа
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Каталог с отчетом
           publish_dir: ./target/site/allure-maven-plugin
-
+      # Шаг 6: Создание Issue с ссылкой
       - name: Create Issue with report link
+        # Команда создания Issue
         run: gh issue create --title "Результаты автотестов SauceDemo" --body "@terebok Тесты завершены. Ссылка на отчет: https://terebok.github.io/demo_JavaSelenium/"
+        # Переменные окружения для шага
         env:
+          # Токен для GitHub CLI
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
