@@ -6,8 +6,8 @@
 Java 17, Maven, Selenium WebDriver, TestNG, Page Object Model, Allure, Rest Assured.
 
 ## Реализованные авто-тесты
-UI-тест TC-AUTH-001: Успешная авторизация пользователя standard_user (проверка перехода на inventory.html, заголовка Products и отображения списка товаров). К тесту прилагается скриншот в отчете Allure.
-API-тест API-001: Проверка доступности главной страницы SauceDemo через HTTP GET (код ответа 200, наличие текста Swag Labs).
+* UI-тест TC-AUTH-001: Успешная авторизация пользователя standard_user. Проверка перехода на inventory.html, заголовка Products и отображения списка товаров. К тесту прилагается скриншот в отчете Allure.
+* API-тест API-001: Проверка доступности главной страницы SauceDemo через HTTP GET. Проверка кода ответа 200 и наличия текста Swag Labs.
 
 ## Запуск локально
 mvn clean test
