@@ -38,6 +38,6 @@ jobs:
           publish_dir: ./target/site/allure-maven-plugin
 
       - name: Create Issue with report link
-        run: gh issue create --title "Результаты автотестов SauceDemo" --body "Тесты завершены. Ссылка на отчет: https://terebok.github.io/demo_JavaSelenium/"
+        run: gh issue create --title "Результаты автотестов SauceDemo" --body "@terebok Тесты завершены. Ссылка на отчет: https://terebok.github.io/demo_JavaSelenium/"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
