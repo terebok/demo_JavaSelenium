@@ -60,10 +60,10 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Каталог с отчетом
           publish_dir: ./target/site/allure-maven-plugin
-      # Шаг 6: Создание Issue с ссылкой
+      # Шаг 6: Создание Issue с ссылкой и назначением исполнителя
       - name: Create Issue with report link
         # Команда создания Issue
-        run: gh issue create --title "Результаты автотестов SauceDemo" --body "@terebok Тесты завершены. Ссылка на отчет: https://terebok.github.io/demo_JavaSelenium/"
+        run: gh issue create --title "Результаты автотестов SauceDemo" --body "@terebok Тесты завершены. Ссылка на отчет: https://terebok.github.io/demo_JavaSelenium/" --assignee terebok
         # Переменные окружения для шага
         env:
           # Токен для GitHub CLI
