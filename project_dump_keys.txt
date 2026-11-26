@@ -1,0 +1,13 @@
+# СЛОВАРЬ ОБЕЗЛИЧЕННЫХ ДАННЫХ
+# Формат: [МЕТКА] = ОРИГИНАЛЬНОЕ ЗНАЧЕНИЕ
+================================================================================
+
+[[LOCAL_PATH_1]] = C:\AT_Project\njsp3
+[[MASK_2]] = https://terebok.github.io/demo_JavaSelenium/
+[[MASK_3]] = terebok
+[[MASK_4]] = C:\AT_Project\demo_JavaSelenium
+[[MASK_5]] = https://www.saucedemo.com
+[[MASK_6]] = demo_JavaSelenium
+[[MASK_7]] = standard_user
+[[MASK_8]] = secret_sauce
+[[IP_9]] = 1.9.22.1

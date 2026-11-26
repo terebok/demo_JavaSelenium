@@ -17,6 +17,7 @@ public class WebUi {
         server.createContext("/run", WebUi::handleRun);
         server.createContext("/status", WebUi::handleStatus);
         server.createContext("/logs", WebUi::handleLogs);
+        server.createContext("/clear", WebUi::handleClear);
         server.createContext("/allure", WebUi::handleAllure);
         server.start();
         System.out.println("WebUI: http://localhost:8080");
@@ -30,21 +31,22 @@ public class WebUi {
                 + "<form id='f'>"
                 + "<label><input type='checkbox' name='t' value='LoginTest#testSuccessfulLogin'> LoginTest.testSuccessfulLogin</label><br>"
                 + "<label><input type='checkbox' name='t' value='ApiTest#testMainPageAvailability'> ApiTest.testMainPageAvailability</label><br>"
-                // Добавлено: атрибут disabled для кнопки запуска по умолчанию (если ничего не выбрано)
                 + "<button type='submit' id='runBtn' disabled>Запустить выбранные</button>"
                 + "</form>"
+                // Обернули кнопки управления логами в div и выровняли по правому краю
+                + "<div style='text-align: right; margin-top: 10px; margin-bottom: 5px;'>"
+                + "<button type='button' id='clearBtn' disabled>Очистить лог</button>"
                 + "<button type='button' id='copyBtn' disabled>Копировать лог</button>"
+                + "</div>"
                 + "<p id='s'>Статус: ожидание</p>"
-                // Добавлено: id='allureLink' для управления состоянием ссылки и начальный стиль неактивности (pointer-events: none; opacity: 0.5)
                 + "<div id='reportLink' style='display:none; margin-top: 10px;'><a id='allureLink' href='/allure' target='_blank' style='font-size: 18px; font-weight: bold; pointer-events: none; opacity: 0.5;'>Открыть отчет Allure</a></div>"
                 + "<pre id='log'></pre>"
                 + "<script>"
-                // Добавлено: глобальная переменная для отслеживания статуса выполнения
                 + "var isRunning = false;"
                 + "var btn=document.getElementById('runBtn');"
                 + "var copyBtn=document.getElementById('copyBtn');"
+                + "var clearBtn=document.getElementById('clearBtn');"
                 + "var rLink=document.getElementById('reportLink');"
-                // Добавлено: слушатель изменения чекбоксов для активации/деактивации кнопки запуска
                 + "document.querySelectorAll('input[name=t]').forEach(function(cb){cb.addEventListener('change',function(){var checked=document.querySelectorAll('input[name=t]:checked').length;btn.disabled=isRunning||(checked===0);});});"
                 + "document.getElementById('f').onsubmit=function(e){e.preventDefault();"
                 + "var v=[...document.querySelectorAll('input[name=t]:checked')].map(x=>x.value);"
@@ -57,23 +59,25 @@ public class WebUi {
                 + "copyBtn.innerText = 'Скопировано!';"
                 + "setTimeout(function(){ copyBtn.innerText = originalText; }, 2000);"
                 + "});};"
+                // Добавлен обработчик нажатия на кнопку очистки
+                + "clearBtn.onclick=function(){"
+                + "fetch('/clear', {method: 'POST'}).then(function() {"
+                + "document.getElementById('log').innerText = '';"
+                + "});};"
                 + "setInterval(function(){"
                 + "fetch('/status').then(r=>r.text()).then(t=>{"
                 + "document.getElementById('s').innerText='Статус: '+t;"
-                // Изменено: присваивание значения глобальной переменной isRunning
                 + "isRunning = (t==='выполняется');"
-                // Изменено: проверка на выбранные чекбоксы для блокировки кнопки запуска
                 + "var checked = document.querySelectorAll('input[name=t]:checked').length;"
                 + "btn.disabled = isRunning || (checked === 0);"
                 + "if(t==='ожидание'){rLink.style.display='block';}else{rLink.style.display='none';}"
                 + "});"
                 + "fetch('/logs').then(r=>r.text()).then(t=>{"
                 + "var l=document.getElementById('log');l.innerText=t;l.scrollTop=l.scrollHeight;"
-                // Добавлено: проверка наличия текста в логах
                 + "var hasLog = t.trim().length > 0;"
-                // Изменено: блокировка кнопки копирования, если лог пуст или идет выполнение
+                // Управление состоянием кнопки очистки
+                + "clearBtn.disabled = isRunning || !hasLog;"
                 + "copyBtn.disabled = isRunning || !hasLog;"
-                // Добавлено: управление активностью ссылки на отчет в зависимости от наличия логов
                 + "var allureLink = document.getElementById('allureLink');"
                 + "if(!hasLog){allureLink.style.pointerEvents='none';allureLink.style.opacity='0.5';}else{allureLink.style.pointerEvents='auto';allureLink.style.opacity='1';}"
                 + "});"
@@ -165,6 +169,14 @@ public class WebUi {
             currentLogs = logBuffer.toString();
         }
         send(ex, 200, currentLogs);
+    }
+
+    // Новый метод для очистки буфера логов
+    private static void handleClear(HttpExchange ex) throws IOException {
+        synchronized (logBuffer) {
+            logBuffer.setLength(0);
+        }
+        send(ex, 200, "очищено");
     }
 
     private static void handleAllure(HttpExchange ex) throws IOException {

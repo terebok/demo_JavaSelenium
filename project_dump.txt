@@ -1,0 +1,1207 @@
+# СТРУКТУРА ПРОЕКТА ДЛЯ АНАЛИЗА ИИ
+# Корневой каталог: [[LOCAL_PATH_1]]
+# Сгенерировано: 2026-11-27 00:24:27
+================================================================================
+
+## ДЕРЕВО КАТАЛОГОВ
+```text
+[[LOCAL_PATH_1]]/
+├── .github/
+│   └── workflows/
+│       └── daily_run.yml
+├── src/
+│   ├── main/
+│   │   └── java/
+│   │       └── com/
+│   │           └── saucedemo/
+│   │               ├── pages/
+│   │               │   ├── InventoryPage.java
+│   │               │   └── LoginPage.java
+│   │               └── utils/
+│   │                   └── DriverFactory.java
+│   └── test/
+│       ├── java/
+│       │   └── com/
+│       │       └── saucedemo/
+│       │           └── tests/
+│       │               ├── ApiTest.java
+│       │               └── LoginTest.java
+│       └── resources/
+│           ├── allure.properties
+│           └── testdata.properties
+├── .gitignore
+├── dockerfile
+├── list_code_project.py
+├── pom.xml
+├── project_dump.txt
+├── project_dump_keys.txt
+├── README.md
+├── restore_project.py
+├── run_webui.bat
+├── testng.xml
+└── WebUi.java
+```
+
+================================================================================
+
+## СОДЕРЖИМОЕ ФАЙЛОВ
+
+### ФАЙЛ: .github/workflows/daily_run.yml
+```
+# Имя пайплайна GitHub Actions
+name: Daily Test Run
+# События, запускающие пайплайн
+on:
+  # Настройка расписания
+  schedule:
+    # Запуск каждый день в 03:00 UTC (соответствует 06:00 МСК)
+    - cron: '0 3 * * *'
+  # Возможность ручного запуска из интерфейса GitHub
+  workflow_dispatch:
+# Права доступа токена GITHUB_TOKEN
+permissions:
+  # Разрешение на запись в репозиторий (для деплоя отчета)
+  contents: write
+  # Разрешение на публикацию GitHub Pages
+  pages: write
+  # Разрешение на использование OpenID Connect
+  id-token: write
+  # Разрешение на создание Issues
+  issues: write
+# Блок описания задач
+jobs:
+  # Идентификатор задачи
+  test-and-report:
+    # Тип виртуальной машины
+    runs-on: ubuntu-latest
+    # Шаги выполнения
+    steps:
+      # Шаг 1: Получение кода из репозитория
+      - name: Checkout code
+        # Используемое действие
+        uses: actions/checkout@v4
+      # Шаг 2: Установка JDK
+      - name: Set up JDK 17
+        # Используемое действие
+        uses: actions/setup-java@v3
+        # Параметры действия
+        with:
+          # Версия Java
+          java-version: '17'
+          # Дистрибутив Java
+          distribution: 'temurin'
+          # Кэширование зависимостей Maven
+          cache: maven
+      # Шаг 3: Запуск тестов
+      - name: Run tests
+        # Команда запуска
+        run: mvn clean test
+      # Шаг 4: Генерация отчета Allure
+      - name: Generate Allure Report
+        # Команда генерации
+        run: mvn allure:report
+      # Шаг 5: Публикация на GitHub Pages
+      - name: Deploy to GitHub Pages
+        # Используемое действие
+        uses: peaceiris/actions-gh-pages@v3
+        # Параметры действия
+        with:
+          # Токен для доступа
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Каталог с отчетом
+          publish_dir: ./target/site/allure-maven-plugin
+      # Шаг 6: Создание Issue с ссылкой и назначением исполнителя
+      - name: Create Issue with report link
+        # Команда создания Issue
+        run: gh issue create --title "Результаты автотестов SauceDemo" --body "@[[MASK_3]] Тесты завершены. Ссылка на отчет: [[MASK_2]]" --assignee [[MASK_3]]
+        # Переменные окружения для шага
+        env:
+          # Токен для GitHub CLI
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### ФАЙЛ: .gitignore
+```
+target/
+.idea/
+*.iml
+.allure/
+*.log
+```
+
+### ФАЙЛ: dockerfile
+```
+# Базовый образ: JDK 17 + Maven 3.9.6 (Ubuntu)
+FROM maven:3.9.6-eclipse-temurin-17
+
+# Обновление apt, установка утилит, добавление репозитория Google Chrome
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        wget gnupg unzip ca-certificates \
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
+        | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+        > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update && apt-get install -y --no-install-recommends google-chrome-stable \
+    && CHROME_VERSION=$(google-chrome --version | awk '{print $3}') \
+    && wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" \
+    && unzip -q /tmp/chromedriver.zip -d /tmp/ \
+    && mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm -rf /var/lib/apt/lists/* /tmp/chromedriver*
+
+# Переменные окружения Chrome, ChromeDriver и офлайн-режима Selenium Manager
+ENV CHROME_BIN=/usr/bin/google-chrome
+ENV CHROMEDRIVER=/usr/local/bin/chromedriver
+ENV SE_OFFLINE=true
+
+# Рабочий каталог
+WORKDIR /app
+
+# Копирование pom.xml и testng.xml
+COPY pom.xml testng.xml ./
+
+# Предзагрузка зависимостей проекта
+RUN mvn -B -q dependency:go-offline
+# Предзагрузка allure-commandline
+RUN mvn -B -q dependency:get -Dartifact=io.qameta.allure:allure-commandline:2.29.0:zip
+# Предзагрузка плагина maven-surefire-plugin
+RUN mvn -B -q org.apache.maven.plugins:maven-surefire-plugin:3.2.5:help
+# Предзагрузка плагина allure-maven
+RUN mvn -B -q io.qameta.allure:allure-maven:2.14.0:help
+# Предзагрузка провайдера surefire-testng
+RUN mvn -B -q dependency:get -Dartifact=org.apache.maven.surefire:surefire-testng:3.2.5
+# Предзагрузка артефактов surefire
+RUN mvn -B -q dependency:get -Dartifact=org.apache.maven.surefire:surefire-api:3.2.5
+RUN mvn -B -q dependency:get -Dartifact=org.apache.maven.surefire:surefire-logger-api:3.2.5
+RUN mvn -B -q dependency:get -Dartifact=org.apache.maven.surefire:common-java5:3.2.5
+RUN mvn -B -q dependency:get -Dartifact=org.apache.maven.surefire:surefire-shared-utils:3.2.5
+# Предзагрузка скина, скачиваемого при генерации Allure-отчёта
+RUN mvn -B -q dependency:get -Dartifact=org.apache.maven.skins:maven-default-skin:1.3
+# Предзагрузка зависимостей отчёта: slf4j, commons-beanutils, commons-collections4
+RUN mvn -B -q dependency:get -Dartifact=org.slf4j:slf4j-api:2.0.7
+RUN mvn -B -q dependency:get -Dartifact=org.slf4j:slf4j-api:2.0.10
+RUN mvn -B -q dependency:get -Dartifact=org.slf4j:slf4j-api:1.7.21
+RUN mvn -B -q dependency:get -Dartifact=commons-beanutils:commons-beanutils:1.9.3
+RUN mvn -B -q dependency:get -Dartifact=org.apache.commons:commons-collections4:4.2
+
+# Копирование исходников и тестов
+COPY src ./src
+
+# Прогрев сборки без запуска тестов
+RUN mvn -B -q -DskipTests clean package
+
+# Прогрев генерации Allure-отчёта для кэширования всех зависимостей отчёта
+RUN mkdir -p target/allure-results && mvn -B -q allure:report || true
+# Очистка сгенерированных артефактов
+RUN rm -rf target
+
+# Копирование веб-интерфейса
+COPY WebUi.java ./
+
+# Открытие порта 8080
+EXPOSE 8080
+
+# Запуск веб-интерфейса
+CMD ["java", "WebUi.java"]
+```
+
+### ФАЙЛ: list_code_project.py
+```
+import datetime
+from pathlib import Path
+import re
+
+# Определяем директорию, где находится сам скрипт, и пути для выходных файлов
+FOLDER_PATH = Path(__file__).resolve().parent
+OUTPUT_FILE = FOLDER_PATH / "project_dump.txt"
+MAPPING_FILE = FOLDER_PATH / "project_dump_keys.txt"
+
+# Список директорий, которые нужно игнорировать при обходе
+SKIP_DIRS = {"target", ".idea", ".allure", ".git", ".venv", "venv", "node_modules"}
+
+# Список бинарных расширений, содержимое которых не нужно читать
+BINARY_EXTS = {".png", ".gif", ".jpg", ".jpeg", ".ico", ".jar", ".class",
+               ".so", ".exe", ".dll", ".zip"}
+
+# Список конкретных данных для обезличивания.
+# Сортируем по убыванию длины, чтобы более длинные строки заменялись раньше коротких.
+EXACT_MATCHES = sorted([
+    r"[[MASK_4]]",
+    "[[MASK_2]]",
+    "[[MASK_5]]",
+    "[[MASK_6]]",
+    "[[MASK_3]]",
+    "[[MASK_7]]",
+    "[[MASK_8]]"
+], key=len, reverse=True)
+
+# Регулярные выражения для поиска общих категорий данных (email, локальные пути, IP)
+PATTERNS = [
+    (r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', 'EMAIL'),
+    (r'[A-Za-z]:\\[^:*?"<>|\r\n]+', 'LOCAL_PATH'),
+    (r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', 'IP')
+]
+
+class Obfuscator:
+    """Класс для замены чувствительных данных на уникальные метки."""
+    
+    def __init__(self):
+        # Словарь для хранения соответствий: "метка" -> "оригинальное значение"
+        self.mapping = {}
+        # Счетчик для генерации уникальных меток
+        self.counter = 1
+
+    def mask_text(self, text: str) -> str:
+        """Принимает текст, находит в нем секреты и заменяет их на метки."""
+        if not text:
+            return text
+
+        # 1. Замена точных совпадений из списка
+        for match in EXACT_MATCHES:
+            if match in text:
+                text = text.replace(match, self._get_mask(match, "MASK"))
+
+        # 2. Замена по регулярным выражениям для общих категорий
+        for pattern, label in PATTERNS:
+            text = re.sub(pattern, lambda m: self._get_mask(m.group(0), label), text)
+
+        return text
+
+    def _get_mask(self, original: str, label: str) -> str:
+        """Генерирует или возвращает существующую метку для оригинального значения."""
+        # Проверяем, есть ли уже метка для этого значения, чтобы не дублировать
+        for k, v in self.mapping.items():
+            if v == original:
+                return k
+        
+        # Создаем новую уникальную метку
+        mask = f"[[{label}_{self.counter}]]"
+        self.mapping[mask] = original
+        self.counter += 1
+        return mask
+
+    def save_mapping(self, filepath: Path):
+        """Сохраняет словарь с расшифровкой меток в отдельный файл."""
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("# СЛОВАРЬ ОБЕЗЛИЧЕННЫХ ДАННЫХ\n")
+            f.write("# Формат: [МЕТКА] = ОРИГИНАЛЬНОЕ ЗНАЧЕНИЕ\n")
+            f.write("=" * 80 + "\n\n")
+            for mask, original in self.mapping.items():
+                f.write(f"{mask} = {original}\n")
+
+
+def collect_files(root: Path):
+    """Генератор для сбора всех файлов проекта с учетом исключений."""
+    for path in sorted(root.rglob("*")):
+        if any(part in SKIP_DIRS for part in path.relative_to(root).parts):
+            continue
+        if path.is_symlink():
+            continue
+        if path.is_file():
+            yield path
+
+def print_tree(directory: Path, obfuscator: Obfuscator, prefix: str = "", max_depth: int = None,
+               depth: int = 0, lines=None):
+    """Рекурсивно строит дерево каталогов, обезличивая имена файлов и папок."""
+    if max_depth is not None and depth >= max_depth:
+        return
+    entries = sorted(
+        (e for e in directory.iterdir() if e.name not in SKIP_DIRS and not e.is_symlink()),
+        key=lambda e: (e.is_file(), e.name.lower()),
+    )
+    for i, entry in enumerate(entries):
+        connector = "└── " if i == len(entries) - 1 else "├── "
+        suffix = "/" if entry.is_dir() else ""
+        
+        # Обезличиваем имя текущего элемента (файла или папки)
+        safe_name = obfuscator.mask_text(entry.name)
+        lines.append(f"{prefix}{connector}{safe_name}{suffix}")
+        
+        if entry.is_dir():
+            extension = "    " if i == len(entries) - 1 else "│   "
+            print_tree(entry, obfuscator, prefix + extension, max_depth, depth + 1, lines)
+
+def main():
+    root = Path(FOLDER_PATH).resolve()
+    if not root.is_dir():
+        raise SystemExit(f"Ошибка: {root} не является каталогом")
+
+    # Инициализируем объект для обезличивания
+    obfuscator = Obfuscator()
+
+    out_lines = []
+    out_lines.append("# СТРУКТУРА ПРОЕКТА ДЛЯ АНАЛИЗА ИИ")
+    
+    # Обезличиваем корневой путь в заголовке файла
+    safe_root_str = obfuscator.mask_text(str(root))
+    out_lines.append(f"# Корневой каталог: {safe_root_str}")
+    out_lines.append(f"# Сгенерировано: {datetime.datetime.now():%Y-%m-%d %H:%M:%S}")
+    out_lines.append("=" * 80)
+    out_lines.append("")
+
+    out_lines.append("## ДЕРЕВО КАТАЛОГОВ")
+    out_lines.append("```text")
+    out_lines.append(f"{safe_root_str}/")
+    # Передаем обезличиватель в функцию построения дерева
+    print_tree(root, obfuscator, max_depth=None, lines=out_lines)
+    out_lines.append("```")
+    out_lines.append("")
+    out_lines.append("=" * 80)
+    out_lines.append("")
+
+    out_lines.append("## СОДЕРЖИМОЕ ФАЙЛОВ")
+    out_lines.append("")
+
+    output_path = Path(OUTPUT_FILE).resolve()
+
+    count = 0
+    for path in collect_files(root):
+        rel = path.relative_to(root)
+        # Пропускаем сам дамп и файл словаря, чтобы не зациклиться
+        if path.resolve() == output_path or path.resolve() == MAPPING_FILE.resolve():
+            continue
+        
+        # Обезличиваем относительный путь файла в заголовке
+        safe_rel = obfuscator.mask_text(rel.as_posix())
+
+        if path.suffix.lower() in BINARY_EXTS:
+            out_lines.append(f"### ФАЙЛ: {safe_rel}  [пропущен: двоичный]")
+            out_lines.append("")
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            content = path.read_text(encoding="cp1251", errors="replace")
+        except PermissionError:
+            out_lines.append(f"### ФАЙЛ: {safe_rel}  [нет доступа]")
+            out_lines.append("")
+            continue
+
+        # Обезличиваем содержимое файла перед добавлением в дамп
+        safe_content = obfuscator.mask_text(content)
+
+        out_lines.append(f"### ФАЙЛ: {safe_rel}")
+        out_lines.append("```")
+        out_lines.append(safe_content)
+        out_lines.append("```")
+        out_lines.append("")
+        count += 1
+
+    out_lines.append("=" * 80)
+    out_lines.append(f"# ИТОГО ФАЙЛОВ В ДАМПЕ: {count}")
+
+    # Сохраняем обезличенный дамп
+    Path(OUTPUT_FILE).write_text("\n".join(out_lines), encoding="utf-8")
+    
+    # Сохраняем словарь с оригинальными значениями для последующей расшифровки
+    obfuscator.save_mapping(MAPPING_FILE)
+
+    print(f"Готово: {count} файлов сохранено в {OUTPUT_FILE}")
+    print(f"Словарь замен сохранен в {MAPPING_FILE}")
+
+if __name__ == "__main__":
+    main()
+```
+
+### ФАЙЛ: pom.xml
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.saucedemo</groupId>
+    <artifactId>saucedemo-autotests</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <selenium.version>4.30.0</selenium.version>
+        <testng.version>7.10.2</testng.version>
+        <allure.version>2.29.1</allure.version>
+        <restassured.version>5.5.0</restassured.version>
+        <aspectj.version>[[IP_9]]</aspectj.version>
+        <surefire.version>3.2.5</surefire.version>
+        <allure.maven.version>2.14.0</allure.maven.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-java</artifactId>
+            <version>${selenium.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>${testng.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.qameta.allure</groupId>
+            <artifactId>allure-testng</artifactId>
+            <version>${allure.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <version>${restassured.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${surefire.version}</version>
+                <configuration>
+                    <suiteXmlFiles>
+                        <suiteXmlFile>testng.xml</suiteXmlFile>
+                    </suiteXmlFiles>
+                    <argLine>
+                        -javaagent:"${settings.localRepository}/org/aspectj/aspectjweaver/${aspectj.version}/aspectjweaver-${aspectj.version}.jar"
+                    </argLine>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.aspectj</groupId>
+                        <artifactId>aspectjweaver</artifactId>
+                        <version>${aspectj.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
+            <plugin>
+                <groupId>io.qameta.allure</groupId>
+                <artifactId>allure-maven</artifactId>
+                <version>${allure.maven.version}</version>
+                <configuration>
+                    <!-- Старое значение: <reportVersion>${allure.version}</reportVersion> -->
+                    <!-- Добавлено: версия генератора отчёта изменена на 2.29.0 -->
+                    <reportVersion>2.29.0</reportVersion>
+                    <resultsDirectory>${project.build.directory}/allure-results</resultsDirectory>
+                    <!-- Добавлено: включение режима одного HTML-файла для обхода ограничений CORS при открытии по file:// -->
+                    <singleFile>true</singleFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+### ФАЙЛ: README.md
+```
+# SauceDemo Autotests
+
+Проект автоматизации тестирования сайта SauceDemo.
+
+## Стек
+Java 17, Maven, Selenium WebDriver, TestNG, Page Object Model, Allure, Rest Assured.
+
+## Реализованные авто-тесты
+* UI-тест TC-AUTH-001: Успешная авторизация пользователя [[MASK_7]]. Проверка перехода на inventory.html, заголовка Products и отображения списка товаров. К тесту прилагается скриншот в отчете Allure.
+* API-тест API-001: Проверка доступности главной страницы SauceDemo через HTTP GET. Проверка кода ответа 200 и наличия текста Swag Labs.
+
+## Запуск локально
+mvn clean test
+mvn allure:report
+
+## Запуск в Docker
+docker build -t saucedemo-autotests .
+docker run --rm -p 8080:8080 saucedemo-autotests
+
+## Веб-интерфейс
+После запуска доступен по адресу http://localhost:8080. Позволяет выбирать тесты, запускать их, просматривать логи и открывать отчет Allure.
+
+## CI/CD
+Настроен GitHub Actions (.github/workflows/daily_run.yml).
+Запуск происходит ежедневно в 06:00 МСК.
+Отчет публикуется на GitHub Pages: [[MASK_2]]
+Уведомление о результате приходит в виде GitHub Issue.
+```
+
+### ФАЙЛ: restore_project.py
+```
+#!/usr/bin/env python3
+"""Восстанавливает проект из дампа, расшифровывая метки обезличивания."""
+
+import re
+from pathlib import Path
+
+# ==== НАСТРОЙКИ ====
+
+FOLDER_PATH = Path(__file__).resolve().parent
+
+DUMP_FILE =  FOLDER_PATH / "project_dump.txt"      # имя файла дампа (обезличенного)
+KEYS_FILE =  FOLDER_PATH / "project_dump_keys.txt" # имя файла со словарем меток
+TARGET_DIR = FOLDER_PATH                    # каталог, куда восстанавливать
+# ===================
+
+FILE_HEADER = "### ФАЙЛ:"
+CONTENT_HEADER = "## СОДЕРЖИМОЕ ФАЙЛОВ"
+
+def load_mapping(keys_file: Path) -> dict:
+    """Читает файл ключей и возвращает словарь для расшифровки меток."""
+    mapping = {}
+    if not keys_file.is_file():
+        print(f"Внимание: Файл ключей {keys_file} не найден. Метки не будут заменены.")
+        return mapping
+
+    # Читаем файл построчно
+    for line in keys_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        # Пропускаем пустые строки, заголовки и разделители
+        if not line or line.startswith("#") or line.startswith("="):
+            continue
+        # Разделяем строку по первому знаку "="
+        if "=" in line:
+            mask, original = line.split("=", 1)
+            # Сохраняем в словарь: ключ - метка, значение - оригинал
+            mapping[mask.strip()] = original.strip()
+    return mapping
+
+def replace_masks(text: str, mapping: dict) -> str:
+    """Заменяет все метки в тексте на оригинальные значения из словаря."""
+    if not text or not mapping:
+        return text
+    
+    # Проходим по всем парам "метка: оригинал" и делаем замену
+    for mask, original in mapping.items():
+        text = text.replace(mask, original)
+        
+    return text
+
+def parse_dump(text: str):
+    """Парсит текст дампа и извлекает пути файлов, маркеры и их содержимое."""
+    lines = text.splitlines()
+    try:
+        start = next(i for i, l in enumerate(lines) if l.strip() == CONTENT_HEADER)
+    except StopIteration:
+        raise SystemExit("В дампе не найден раздел '## СОДЕРЖИМОЕ ФАЙЛОВ'")
+
+    i = start + 1
+    files = []
+
+    while i < len(lines):
+        line = lines[i]
+        if not line.startswith(FILE_HEADER):
+            i += 1
+            continue
+
+        raw_title = line[len(FILE_HEADER):].strip()
+        marker = None
+        # Ищем маркер пропуска (например, [пропущен: двоичный])
+        m = re.match(r"^(.*?)\s*\[(.*?)\]\s*$", raw_title)
+        if m:
+            path_str = m.group(1).strip()
+            marker = m.group(2).strip()
+        else:
+            path_str = raw_title
+
+        i += 1
+        # Пропускаем открывающие ``` 
+        if i < len(lines) and lines[i].lstrip().startswith("```"):
+            i += 1
+
+        content_lines = []
+        while i < len(lines):
+            cur = lines[i]
+            if cur == "```":
+                k = i + 1
+                while k < len(lines) and lines[k].strip() == "":
+                    k += 1
+                # Проверяем, является ли ``` закрывающим для текущего файла
+                if k >= len(lines) or lines[k].startswith(FILE_HEADER) or lines[k].startswith("="):
+                    i += 1
+                    while i < len(lines) and lines[i].strip() == "":
+                        i += 1
+                    break
+            content_lines.append(cur)
+            i += 1
+
+        files.append((path_str, marker, "\n".join(content_lines)))
+
+    return files
+
+def safe_target(target_dir: Path, rel_path: str) -> Path:
+    """Проверяет безопасность пути, чтобы файлы не записались вне целевого каталога."""
+    rel_path = rel_path.replace("\\", "/").lstrip("/")
+    if re.match(r"^[A-Za-z]:", rel_path):
+        raise ValueError(f"Абсолютный путь запрещён: {rel_path}")
+    if ".." in Path(rel_path).parts:
+        raise ValueError(f"Выход за пределы каталога запрещён: {rel_path}")
+    dst = (target_dir / rel_path).resolve()
+    if target_dir.resolve() not in dst.parents and dst != target_dir.resolve():
+        raise ValueError(f"Путь вне целевого каталога: {rel_path}")
+    return dst
+
+def main():
+    dump_file = Path(DUMP_FILE)
+    keys_file = Path(KEYS_FILE)
+    target_dir = Path(TARGET_DIR)
+
+    if not dump_file.is_file():
+        raise SystemExit(f"Дамп не найден: {dump_file.resolve()}")
+
+    # Загружаем словарь с оригинальными значениями
+    mapping = load_mapping(keys_file)
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    text = dump_file.read_text(encoding="utf-8", errors="replace")
+    files = parse_dump(text)
+
+    created = skipped = errors = 0
+
+    for rel_path, marker, content in files:
+        # Пропускаем бинарные файлы и файлы без доступа
+        if marker:
+            print(f"[SKIP] {rel_path}  ({marker})")
+            skipped += 1
+            continue
+
+        # Восстанавливаем оригинальный путь файла
+        real_rel_path = replace_masks(rel_path, mapping)
+        
+        # Восстанавливаем оригинальное содержимое файла
+        real_content = replace_masks(content, mapping)
+
+        try:
+            dst = safe_target(target_dir, real_rel_path)
+        except ValueError as e:
+            print(f"[ERR ] {e}")
+            errors += 1
+            continue
+
+        # Создаем директории и записываем файл
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        with open(dst, "w", encoding="utf-8", newline="\n") as f:
+            f.write(real_content)
+            
+        print(f"[OK  ] {real_rel_path}")
+        created += 1
+
+    print("=" * 60)
+    print(f"Создано файлов: {created}")
+    print(f"Пропущено:      {skipped}")
+    print(f"Ошибок:         {errors}")
+
+if __name__ == "__main__":
+    main()
+```
+
+### ФАЙЛ: run_webui.bat
+```
+@echo off
+cd /d "%~dp0"
+java WebUi.java
+pause
+```
+
+### ФАЙЛ: src/main/java/com/saucedemo/pages/InventoryPage.java
+```
+package com.saucedemo.pages;
+
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+
+import java.time.Duration;
+
+public class InventoryPage {
+
+    private final WebDriver driver;
+    private final WebDriverWait wait;
+
+    private final By pageTitle = By.className("title");
+    private final By inventoryList = By.className("inventory_list");
+
+    public InventoryPage(WebDriver driver) {
+        this.driver = driver;
+        this.wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+    }
+
+    public String getPageTitle() {
+        return wait.until(ExpectedConditions.visibilityOfElementLocated(pageTitle)).getText();
+    }
+
+    public boolean isInventoryListDisplayed() {
+        return wait.until(ExpectedConditions.visibilityOfElementLocated(inventoryList)).isDisplayed();
+    }
+
+    public String getCurrentUrl() {
+        return driver.getCurrentUrl();
+    }
+}
+```
+
+### ФАЙЛ: src/main/java/com/saucedemo/pages/LoginPage.java
+```
+package com.saucedemo.pages;
+
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+
+import java.time.Duration;
+
+public class LoginPage {
+
+    private final WebDriver driver;
+    private final WebDriverWait wait;
+
+    private final By usernameField = By.id("user-name");
+    private final By passwordField = By.id("password");
+    private final By loginButton = By.id("login-button");
+    private final By errorMessage = By.cssSelector("[data-test='error']");
+
+    public LoginPage(WebDriver driver) {
+        this.driver = driver;
+        this.wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+    }
+
+    public LoginPage open(String url) {
+        driver.get(url);
+        wait.until(ExpectedConditions.visibilityOfElementLocated(usernameField));
+        return this;
+    }
+
+    public LoginPage enterUsername(String username) {
+        WebElement field = wait.until(ExpectedConditions.visibilityOfElementLocated(usernameField));
+        field.clear();
+        field.sendKeys(username);
+        return this;
+    }
+
+    public LoginPage enterPassword(String password) {
+        WebElement field = wait.until(ExpectedConditions.visibilityOfElementLocated(passwordField));
+        field.clear();
+        field.sendKeys(password);
+        return this;
+    }
+
+    public InventoryPage clickLogin() {
+        wait.until(ExpectedConditions.elementToBeClickable(loginButton)).click();
+        return new InventoryPage(driver);
+    }
+
+    public String getErrorMessage() {
+        return wait.until(ExpectedConditions.visibilityOfElementLocated(errorMessage)).getText();
+    }
+}
+```
+
+### ФАЙЛ: src/main/java/com/saucedemo/utils/DriverFactory.java
+```
+package com.saucedemo.utils;
+
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
+
+public class DriverFactory {
+
+    public static WebDriver createDriver() {
+        ChromeOptions options = new ChromeOptions();
+        options.addArguments("--start-maximized");
+        options.addArguments("--disable-notifications");
+        //       options.addArguments("--headless=new");
+        // Изменено: аргумент headless удален для явного запуска браузера
+        options.addArguments("--window-size=1920,1080");
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
+        return new ChromeDriver(options);
+    }
+
+    public static void quitDriver(WebDriver driver) {
+        if (driver != null) {
+            driver.quit();
+        }
+    }
+}
+```
+
+### ФАЙЛ: src/test/java/com/saucedemo/tests/ApiTest.java
+```
+package com.saucedemo.tests;
+
+import io.qameta.allure.Epic;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
+import io.restassured.RestAssured;
+import io.restassured.response.Response;
+import org.testng.Assert;
+import org.testng.annotations.Test;
+
+import static io.restassured.RestAssured.given;
+
+@Epic("SauceDemo")
+@Feature("API")
+public class ApiTest {
+
+    @Test(description = "Проверка доступности главной страницы SauceDemo через HTTP GET")
+    @Story("API-001")
+    public void testMainPageAvailability() {
+        RestAssured.baseURI = "[[MASK_5]]";
+
+        Response response = given()
+                .when()
+                .get("/")
+                .then()
+                .extract()
+                .response();
+
+        Assert.assertEquals(response.getStatusCode(), 200);
+        Assert.assertTrue(response.getBody().asString().contains("Swag Labs"));
+    }
+}
+```
+
+### ФАЙЛ: src/test/java/com/saucedemo/tests/LoginTest.java
+```
+package com.saucedemo.tests;
+
+import com.saucedemo.pages.InventoryPage;
+import com.saucedemo.pages.LoginPage;
+import com.saucedemo.utils.DriverFactory;
+// Добавлено: импорт класса Allure для прикрепления файлов
+import io.qameta.allure.Allure;
+import io.qameta.allure.Description;
+import io.qameta.allure.Epic;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Story;
+// Добавлено: импорт OutputType для получения скриншота в виде байтов
+import org.openqa.selenium.OutputType;
+// Добавлено: импорт интерфейса TakesScreenshot для создания скриншотов
+import org.openqa.selenium.TakesScreenshot;
+import org.openqa.selenium.WebDriver;
+import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
+
+// Добавлено: импорт ByteArrayInputStream для передачи скриншота в Allure
+import java.io.ByteArrayInputStream;
+
+@Epic("SauceDemo")
+@Feature("Авторизация")
+public class LoginTest {
+
+    private WebDriver driver;
+    private LoginPage loginPage;
+
+    @BeforeMethod
+    public void setUp() {
+        driver = DriverFactory.createDriver();
+        loginPage = new LoginPage(driver);
+    }
+
+    // Изменено: добавлен параметр alwaysRun = true, чтобы скриншот делался даже при падении теста
+    @AfterMethod(alwaysRun = true)
+    public void tearDown() {
+        // Добавлено: блок try-catch для безопасного создания скриншота
+        try {
+            // Добавлено: проверка, поддерживает ли драйвер создание скриншотов
+            if (driver instanceof TakesScreenshot) {
+                // Добавлено: получение скриншота в виде массива байт
+                byte[] screenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES);
+                // Добавлено: прикрепление скриншота к отчету Allure с именем "Скриншот"
+                Allure.addAttachment("Скриншот", "image/png", new ByteArrayInputStream(screenshot), ".png");
+            }
+        } catch (Exception e) {
+            // Добавлено: вывод ошибки в консоль, если скриншот не удался
+            e.printStackTrace();
+        }
+        // Существующий код закрытия драйвера
+        DriverFactory.quitDriver(driver);
+    }
+
+    @Test(description = "TC-AUTH-001: Успешная авторизация пользователя [[MASK_7]]")
+    @Story("TC-AUTH-001")
+    @Description("Открыть сайт, ввести [[MASK_7]]/[[MASK_8]], нажать Login, проверить переход на inventory.html и заголовок Products")
+    public void testSuccessfulLogin() {
+        InventoryPage inventoryPage = loginPage
+                .open("[[MASK_5]]")
+                .enterUsername("[[MASK_7]]")
+                .enterPassword("[[MASK_8]]")
+                .clickLogin();
+
+        Assert.assertEquals(inventoryPage.getCurrentUrl(), "[[MASK_5]]/inventory.html");
+        Assert.assertEquals(inventoryPage.getPageTitle(), "Products");
+        Assert.assertTrue(inventoryPage.isInventoryListDisplayed());
+    }
+}
+```
+
+### ФАЙЛ: src/test/resources/allure.properties
+```
+allure.results.directory=target/allure-results
+```
+
+### ФАЙЛ: src/test/resources/testdata.properties
+```
+base.url=[[MASK_5]]
+standard.username=[[MASK_7]]
+standard.password=[[MASK_8]]
+inventory.url=[[MASK_5]]/inventory.html
+products.title=Products
+```
+
+### ФАЙЛ: testng.xml
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="SauceDemo Suite">
+    <test name="UI Tests">
+        <classes>
+            <class name="com.saucedemo.tests.LoginTest"/>
+        </classes>
+    </test>
+    <test name="API Tests">
+        <classes>
+            <class name="com.saucedemo.tests.ApiTest"/>
+        </classes>
+    </test>
+</suite>
+```
+
+### ФАЙЛ: WebUi.java
+```
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpExchange;
+import java.net.InetSocketAddress;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.net.URLDecoder;
+import java.nio.file.Files;
+
+public class WebUi {
+
+    private static volatile boolean running = false;
+    private static final StringBuilder logBuffer = new StringBuilder();
+
+    public static void main(String[] args) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        server.createContext("/", WebUi::handleIndex);
+        server.createContext("/run", WebUi::handleRun);
+        server.createContext("/status", WebUi::handleStatus);
+        server.createContext("/logs", WebUi::handleLogs);
+        server.createContext("/clear", WebUi::handleClear);
+        server.createContext("/allure", WebUi::handleAllure);
+        server.start();
+        System.out.println("WebUI: http://localhost:8080");
+        Thread.currentThread().join();
+    }
+
+    private static void handleIndex(HttpExchange ex) throws IOException {
+        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SauceDemo Tests</title>"
+                + "<style>pre{background:#f4f4f4;padding:10px;height:400px;overflow:auto;}</style></head><body>"
+                + "<h1>SauceDemo автотесты</h1>"
+                + "<form id='f'>"
+                + "<label><input type='checkbox' name='t' value='LoginTest#testSuccessfulLogin'> LoginTest.testSuccessfulLogin</label><br>"
+                + "<label><input type='checkbox' name='t' value='ApiTest#testMainPageAvailability'> ApiTest.testMainPageAvailability</label><br>"
+                + "<button type='submit' id='runBtn' disabled>Запустить выбранные</button>"
+                + "</form>"
+                // Обернули кнопки управления логами в div и выровняли по правому краю
+                + "<div style='text-align: right; margin-top: 10px; margin-bottom: 5px;'>"
+                + "<button type='button' id='clearBtn' disabled>Очистить лог</button>"
+                + "<button type='button' id='copyBtn' disabled>Копировать лог</button>"
+                + "</div>"
+                + "<p id='s'>Статус: ожидание</p>"
+                + "<div id='reportLink' style='display:none; margin-top: 10px;'><a id='allureLink' href='/allure' target='_blank' style='font-size: 18px; font-weight: bold; pointer-events: none; opacity: 0.5;'>Открыть отчет Allure</a></div>"
+                + "<pre id='log'></pre>"
+                + "<script>"
+                + "var isRunning = false;"
+                + "var btn=document.getElementById('runBtn');"
+                + "var copyBtn=document.getElementById('copyBtn');"
+                + "var clearBtn=document.getElementById('clearBtn');"
+                + "var rLink=document.getElementById('reportLink');"
+                + "document.querySelectorAll('input[name=t]').forEach(function(cb){cb.addEventListener('change',function(){var checked=document.querySelectorAll('input[name=t]:checked').length;btn.disabled=isRunning||(checked===0);});});"
+                + "document.getElementById('f').onsubmit=function(e){e.preventDefault();"
+                + "var v=[...document.querySelectorAll('input[name=t]:checked')].map(x=>x.value);"
+                + "if(!v.length){alert('Выберите хотя бы один тест');return;}"
+                + "fetch('/run',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'tests='+encodeURIComponent(v.join(','))});};"
+                + "copyBtn.onclick=function(){"
+                + "var text = document.getElementById('log').innerText;"
+                + "navigator.clipboard.writeText(text).then(function(){"
+                + "var originalText = copyBtn.innerText;"
+                + "copyBtn.innerText = 'Скопировано!';"
+                + "setTimeout(function(){ copyBtn.innerText = originalText; }, 2000);"
+                + "});};"
+                // Добавлен обработчик нажатия на кнопку очистки
+                + "clearBtn.onclick=function(){"
+                + "fetch('/clear', {method: 'POST'}).then(function() {"
+                + "document.getElementById('log').innerText = '';"
+                + "});};"
+                + "setInterval(function(){"
+                + "fetch('/status').then(r=>r.text()).then(t=>{"
+                + "document.getElementById('s').innerText='Статус: '+t;"
+                + "isRunning = (t==='выполняется');"
+                + "var checked = document.querySelectorAll('input[name=t]:checked').length;"
+                + "btn.disabled = isRunning || (checked === 0);"
+                + "if(t==='ожидание'){rLink.style.display='block';}else{rLink.style.display='none';}"
+                + "});"
+                + "fetch('/logs').then(r=>r.text()).then(t=>{"
+                + "var l=document.getElementById('log');l.innerText=t;l.scrollTop=l.scrollHeight;"
+                + "var hasLog = t.trim().length > 0;"
+                // Управление состоянием кнопки очистки
+                + "clearBtn.disabled = isRunning || !hasLog;"
+                + "copyBtn.disabled = isRunning || !hasLog;"
+                + "var allureLink = document.getElementById('allureLink');"
+                + "if(!hasLog){allureLink.style.pointerEvents='none';allureLink.style.opacity='0.5';}else{allureLink.style.pointerEvents='auto';allureLink.style.opacity='1';}"
+                + "});"
+                + "},2000);"
+                + "</script>"
+                + "</body></html>";
+        send(ex, 200, html);
+    }
+
+    private static void handleRun(HttpExchange ex) throws IOException {
+        if (running) { send(ex, 200, "уже выполняется"); return; }
+        String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        String tests = "";
+        for (String pair : body.split("&")) {
+            String[] kv = pair.split("=", 2);
+            if (kv.length == 2 && kv[0].equals("tests")) {
+                tests = URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+            }
+        }
+        final String testParam = tests;
+        running = true;
+        synchronized (logBuffer) {
+            logBuffer.setLength(0);
+        }
+
+        new Thread(() -> {
+            try {
+                boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+
+                ProcessBuilder testPb;
+                if (testParam.isEmpty()) {
+                    testPb = isWindows
+                            ? new ProcessBuilder("cmd", "/c", "mvn", "clean", "test")
+                            : new ProcessBuilder("mvn", "clean", "test");
+                } else {
+                    testPb = isWindows
+                            ? new ProcessBuilder("cmd", "/c", "mvn", "clean", "test", "-Dtest=" + testParam)
+                            : new ProcessBuilder("mvn", "clean", "test", "-Dtest=" + testParam);
+                }
+                testPb.directory(new File("."));
+                testPb.redirectErrorStream(true);
+                Process p = testPb.start();
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        synchronized (logBuffer) {
+                            logBuffer.append(line).append("\n");
+                        }
+                        System.out.println(line);
+                    }
+                }
+                p.waitFor();
+
+                ProcessBuilder reportPb = isWindows
+                        ? new ProcessBuilder("cmd", "/c", "mvn", "allure:report")
+                        : new ProcessBuilder("mvn", "allure:report");
+                reportPb.directory(new File("."));
+                reportPb.redirectErrorStream(true);
+                Process rp = reportPb.start();
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(rp.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        synchronized (logBuffer) {
+                            logBuffer.append(line).append("\n");
+                        }
+                        System.out.println(line);
+                    }
+                }
+                rp.waitFor();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                running = false;
+            }
+        }).start();
+        send(ex, 200, "запущено");
+    }
+
+    private static void handleStatus(HttpExchange ex) throws IOException {
+        send(ex, 200, running ? "выполняется" : "ожидание");
+    }
+
+    private static void handleLogs(HttpExchange ex) throws IOException {
+        String currentLogs;
+        synchronized (logBuffer) {
+            currentLogs = logBuffer.toString();
+        }
+        send(ex, 200, currentLogs);
+    }
+
+    // Новый метод для очистки буфера логов
+    private static void handleClear(HttpExchange ex) throws IOException {
+        synchronized (logBuffer) {
+            logBuffer.setLength(0);
+        }
+        send(ex, 200, "очищено");
+    }
+
+    private static void handleAllure(HttpExchange ex) throws IOException {
+        String path = ex.getRequestURI().getPath();
+        if (path.equals("/allure") || path.equals("/allure/")) {
+            path = "/allure/index.html";
+        }
+        File file = new File("target/site/allure-maven-plugin" + path.replace("/allure", ""));
+        if (!file.exists() || file.isDirectory()) {
+            send(ex, 404, "Not found");
+            return;
+        }
+
+        String mime = "text/plain";
+        if (path.endsWith(".html")) mime = "text/html";
+        else if (path.endsWith(".js")) mime = "application/javascript";
+        else if (path.endsWith(".css")) mime = "text/css";
+        else if (path.endsWith(".png")) mime = "image/png";
+        else if (path.endsWith(".svg")) mime = "image/svg+xml";
+        else if (path.endsWith(".woff2")) mime = "font/woff2";
+        else if (path.endsWith(".woff")) mime = "font/woff";
+        else if (path.endsWith(".ttf")) mime = "font/ttf";
+        else if (path.endsWith(".json")) mime = "application/json";
+
+        byte[] bytes = Files.readAllBytes(file.toPath());
+        ex.getResponseHeaders().add("Content-Type", mime);
+        ex.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
+    }
+
+    private static void send(HttpExchange ex, int code, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        ex.getResponseHeaders().add("Content-Type", "text/html; charset=UTF-8");
+        ex.sendResponseHeaders(code, bytes.length);
+        try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
+    }
+}
+```
+
+================================================================================
+# ИТОГО ФАЙЛОВ В ДАМПЕ: 17
