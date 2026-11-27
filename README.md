@@ -23,10 +23,12 @@ Java 17, Maven, Selenium WebDriver, TestNG, Page Object Model, Allure, Rest Assu
 * restore_project.py: восстанавливает проект из обезличенного дампа, используя файл ключей для обратной замены меток на оригинальные данные.
 
 ## Запуск локально
+Для запуска тестов из консоли:
 mvn clean test
 mvn allure:report
 
-Для запуска веб-интерфейса используйте run_webui.bat или выполните:
+## run_webui.bat
+Для быстрого запуска веб-интерфейса на Windows предусмотрен скрипт run_webui.bat. Он автоматически переходит в директорию проекта и запускает java WebUi.java. Запуск также можно выполнить вручную:
 java WebUi.java
 
 ## Запуск в Docker
