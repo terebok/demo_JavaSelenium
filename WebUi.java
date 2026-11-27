@@ -5,18 +5,25 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.net.URLDecoder;
 import java.nio.file.Files;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class WebUi {
 
     private static volatile boolean running = false;
     private static final StringBuilder logBuffer = new StringBuilder();
+    private static String projectRootPath = "";
 
     public static void main(String[] args) throws Exception {
+        // Определяем корень проекта при старте
+        projectRootPath = new File(".").getCanonicalPath();
+
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
         server.createContext("/", WebUi::handleIndex);
         server.createContext("/run", WebUi::handleRun);
         server.createContext("/status", WebUi::handleStatus);
         server.createContext("/logs", WebUi::handleLogs);
+        server.createContext("/logs-obfuscated", WebUi::handleLogsObfuscated);
         server.createContext("/clear", WebUi::handleClear);
         server.createContext("/git-push", WebUi::handleGit);
         server.createContext("/allure", WebUi::handleAllure);
@@ -36,6 +43,40 @@ public class WebUi {
             }
         } catch (Exception ignored) {}
         return false;
+    }
+
+    private static String obfuscateLog(String text) {
+        if (text == null || text.isEmpty()) return text;
+
+        // 1. Замена конкретных данных из проекта
+        text = text.replace("terebok", "[[MASK]]");
+        text = text.replace("standard_user", "[[MASK]]");
+        text = text.replace("secret_sauce", "[[MASK]]");
+
+        // 2. Замена корневого пути проекта на метку (сохраняя структуру папок)
+        if (!projectRootPath.isEmpty()) {
+            // Заменяем разные варианты слэшей для кроссплатформенности
+            text = text.replace(projectRootPath, "[[PROJECT_ROOT]]");
+            text = text.replace(projectRootPath.replace("\\", "/"), "[[PROJECT_ROOT]]");
+            text = text.replace(projectRootPath.replace("/", "\\"), "[[PROJECT_ROOT]]");
+        }
+
+        // 3. Замена оставшихся путей (если они не относятся к корню проекта)
+        text = Pattern.compile("[A-Za-z]:\\\\[^:*?\"<>|\\r\\n]+")
+                .matcher(text)
+                .replaceAll(Matcher.quoteReplacement("[[LOCAL_PATH]]"));
+
+        // 4. Замена IP-адресов
+        text = Pattern.compile("\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b")
+                .matcher(text)
+                .replaceAll(Matcher.quoteReplacement("[[IP]]"));
+
+        // 5. Замена email
+        text = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+                .matcher(text)
+                .replaceAll(Matcher.quoteReplacement("[[EMAIL]]"));
+
+        return text;
     }
 
     private static void handleIndex(HttpExchange ex) throws IOException {
@@ -71,11 +112,12 @@ public class WebUi {
                 + "if(!v.length){alert('Выберите хотя бы один тест');return;}"
                 + "fetch('/run',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'tests='+encodeURIComponent(v.join(','))});};"
                 + "copyBtn.onclick=function(){"
-                + "var text = document.getElementById('log').innerText;"
+                + "fetch('/logs-obfuscated').then(r=>r.text()).then(text => {"
                 + "navigator.clipboard.writeText(text).then(function(){"
                 + "var originalText = copyBtn.innerText;"
                 + "copyBtn.innerText = 'Скопировано!';"
                 + "setTimeout(function(){ copyBtn.innerText = originalText; }, 2000);"
+                + "});"
                 + "});};"
                 + "clearBtn.onclick=function(){"
                 + "fetch('/clear', {method: 'POST'}).then(function() {"
@@ -291,6 +333,15 @@ public class WebUi {
             currentLogs = logBuffer.toString();
         }
         send(ex, 200, currentLogs);
+    }
+
+    private static void handleLogsObfuscated(HttpExchange ex) throws IOException {
+        String currentLogs;
+        synchronized (logBuffer) {
+            currentLogs = logBuffer.toString();
+        }
+        String obfuscated = obfuscateLog(currentLogs);
+        send(ex, 200, obfuscated);
     }
 
     private static void handleClear(HttpExchange ex) throws IOException {

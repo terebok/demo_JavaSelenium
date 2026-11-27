@@ -1,11 +1,11 @@
 # СТРУКТУРА ПРОЕКТА ДЛЯ АНАЛИЗА ИИ
-# Корневой каталог: [[LOCAL_PATH_1]]
-# Сгенерировано: 2026-11-27 00:24:27
+# Корневой каталог: [[MASK_1]]
+# Сгенерировано: 2026-11-27 09:57:01
 ================================================================================
 
 ## ДЕРЕВО КАТАЛОГОВ
 ```text
-[[LOCAL_PATH_1]]/
+[[MASK_1]]/
 ├── .github/
 │   └── workflows/
 │       └── daily_run.yml
@@ -226,13 +226,13 @@ BINARY_EXTS = {".png", ".gif", ".jpg", ".jpeg", ".ico", ".jar", ".class",
 # Список конкретных данных для обезличивания.
 # Сортируем по убыванию длины, чтобы более длинные строки заменялись раньше коротких.
 EXACT_MATCHES = sorted([
-    r"[[MASK_4]]",
+    r"[[MASK_1]]",
     "[[MASK_2]]",
+    "[[MASK_4]]",
     "[[MASK_5]]",
-    "[[MASK_6]]",
     "[[MASK_3]]",
-    "[[MASK_7]]",
-    "[[MASK_8]]"
+    "[[MASK_6]]",
+    "[[MASK_7]]"
 ], key=len, reverse=True)
 
 # Регулярные выражения для поиска общих категорий данных (email, локальные пути, IP)
@@ -424,7 +424,7 @@ if __name__ == "__main__":
         <testng.version>7.10.2</testng.version>
         <allure.version>2.29.1</allure.version>
         <restassured.version>5.5.0</restassured.version>
-        <aspectj.version>[[IP_9]]</aspectj.version>
+        <aspectj.version>[[IP_8]]</aspectj.version>
         <surefire.version>3.2.5</surefire.version>
         <allure.maven.version>2.14.0</allure.maven.version>
     </properties>
@@ -515,7 +515,7 @@ if __name__ == "__main__":
 Java 17, Maven, Selenium WebDriver, TestNG, Page Object Model, Allure, Rest Assured.
 
 ## Реализованные авто-тесты
-* UI-тест TC-AUTH-001: Успешная авторизация пользователя [[MASK_7]]. Проверка перехода на inventory.html, заголовка Products и отображения списка товаров. К тесту прилагается скриншот в отчете Allure.
+* UI-тест TC-AUTH-001: Успешная авторизация пользователя [[MASK_6]]. Проверка перехода на inventory.html, заголовка Products и отображения списка товаров. К тесту прилагается скриншот в отчете Allure.
 * API-тест API-001: Проверка доступности главной страницы SauceDemo через HTTP GET. Проверка кода ответа 200 и наличия текста Swag Labs.
 
 ## Запуск локально
@@ -823,7 +823,7 @@ public class DriverFactory {
         ChromeOptions options = new ChromeOptions();
         options.addArguments("--start-maximized");
         options.addArguments("--disable-notifications");
-        //       options.addArguments("--headless=new");
+       // options.addArguments("--headless=new");
         // Изменено: аргумент headless удален для явного запуска браузера
         options.addArguments("--window-size=1920,1080");
         options.addArguments("--no-sandbox");
@@ -860,7 +860,7 @@ public class ApiTest {
     @Test(description = "Проверка доступности главной страницы SauceDemo через HTTP GET")
     @Story("API-001")
     public void testMainPageAvailability() {
-        RestAssured.baseURI = "[[MASK_5]]";
+        RestAssured.baseURI = "[[MASK_4]]";
 
         Response response = given()
                 .when()
@@ -934,17 +934,17 @@ public class LoginTest {
         DriverFactory.quitDriver(driver);
     }
 
-    @Test(description = "TC-AUTH-001: Успешная авторизация пользователя [[MASK_7]]")
+    @Test(description = "TC-AUTH-001: Успешная авторизация пользователя [[MASK_6]]")
     @Story("TC-AUTH-001")
-    @Description("Открыть сайт, ввести [[MASK_7]]/[[MASK_8]], нажать Login, проверить переход на inventory.html и заголовок Products")
+    @Description("Открыть сайт, ввести [[MASK_6]]/[[MASK_7]], нажать Login, проверить переход на inventory.html и заголовок Products")
     public void testSuccessfulLogin() {
         InventoryPage inventoryPage = loginPage
-                .open("[[MASK_5]]")
-                .enterUsername("[[MASK_7]]")
-                .enterPassword("[[MASK_8]]")
+                .open("[[MASK_4]]")
+                .enterUsername("[[MASK_6]]")
+                .enterPassword("[[MASK_7]]")
                 .clickLogin();
 
-        Assert.assertEquals(inventoryPage.getCurrentUrl(), "[[MASK_5]]/inventory.html");
+        Assert.assertEquals(inventoryPage.getCurrentUrl(), "[[MASK_4]]/inventory.html");
         Assert.assertEquals(inventoryPage.getPageTitle(), "Products");
         Assert.assertTrue(inventoryPage.isInventoryListDisplayed());
     }
@@ -958,10 +958,10 @@ allure.results.directory=target/allure-results
 
 ### ФАЙЛ: src/test/resources/testdata.properties
 ```
-base.url=[[MASK_5]]
-standard.username=[[MASK_7]]
-standard.password=[[MASK_8]]
-inventory.url=[[MASK_5]]/inventory.html
+base.url=[[MASK_4]]
+standard.username=[[MASK_6]]
+standard.password=[[MASK_7]]
+inventory.url=[[MASK_4]]/inventory.html
 products.title=Products
 ```
 
@@ -1005,25 +1005,42 @@ public class WebUi {
         server.createContext("/status", WebUi::handleStatus);
         server.createContext("/logs", WebUi::handleLogs);
         server.createContext("/clear", WebUi::handleClear);
+        server.createContext("/git-push", WebUi::handleGit);
         server.createContext("/allure", WebUi::handleAllure);
         server.start();
         System.out.println("WebUI: http://localhost:8080");
         Thread.currentThread().join();
     }
 
+    private static boolean isRunningInDocker() {
+        if (new File("/.dockerenv").exists()) return true;
+        if ("true".equalsIgnoreCase(System.getenv("DOCKER_CONTAINER"))) return true;
+        try {
+            File cgroup = new File("/proc/self/cgroup");
+            if (cgroup.exists()) {
+                String content = new String(Files.readAllBytes(cgroup.toPath()), StandardCharsets.UTF_8);
+                if (content.contains("docker") || content.contains("kubepods")) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     private static void handleIndex(HttpExchange ex) throws IOException {
-        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SauceDemo Tests</title>"
+        boolean inDocker = isRunningInDocker();
+        String envStatus = inDocker ? " (в Docker)" : " (Local)";
+
+        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SauceDemo Tests" + envStatus + "</title>"
                 + "<style>pre{background:#f4f4f4;padding:10px;height:400px;overflow:auto;}</style></head><body>"
-                + "<h1>SauceDemo автотесты</h1>"
-                + "<form id='f'>"
+                + "<h1>SauceDemo автотесты" + envStatus + "</h1>"
+                + "<div>"
                 + "<label><input type='checkbox' name='t' value='LoginTest#testSuccessfulLogin'> LoginTest.testSuccessfulLogin</label><br>"
-                + "<label><input type='checkbox' name='t' value='ApiTest#testMainPageAvailability'> ApiTest.testMainPageAvailability</label><br>"
-                + "<button type='submit' id='runBtn' disabled>Запустить выбранные</button>"
-                + "</form>"
-                // Обернули кнопки управления логами в div и выровняли по правому краю
-                + "<div style='text-align: right; margin-top: 10px; margin-bottom: 5px;'>"
+                + "<label><input type='checkbox' name='t' value='ApiTest#testMainPageAvailability'> ApiTest.testMainPageAvailability</label>"
+                + "</div>"
+                + "<div style='margin-top: 10px; display: flex; gap: 10px; align-items: center;'>"
+                + "<button type='button' id='runBtn' disabled>Запустить выбранное</button>"
                 + "<button type='button' id='clearBtn' disabled>Очистить лог</button>"
                 + "<button type='button' id='copyBtn' disabled>Копировать лог</button>"
+                + "<button type='button' id='gitBtn' disabled>->Git</button>"
                 + "</div>"
                 + "<p id='s'>Статус: ожидание</p>"
                 + "<div id='reportLink' style='display:none; margin-top: 10px;'><a id='allureLink' href='/allure' target='_blank' style='font-size: 18px; font-weight: bold; pointer-events: none; opacity: 0.5;'>Открыть отчет Allure</a></div>"
@@ -1033,9 +1050,10 @@ public class WebUi {
                 + "var btn=document.getElementById('runBtn');"
                 + "var copyBtn=document.getElementById('copyBtn');"
                 + "var clearBtn=document.getElementById('clearBtn');"
+                + "var gitBtn=document.getElementById('gitBtn');"
                 + "var rLink=document.getElementById('reportLink');"
                 + "document.querySelectorAll('input[name=t]').forEach(function(cb){cb.addEventListener('change',function(){var checked=document.querySelectorAll('input[name=t]:checked').length;btn.disabled=isRunning||(checked===0);});});"
-                + "document.getElementById('f').onsubmit=function(e){e.preventDefault();"
+                + "btn.onclick=function(){"
                 + "var v=[...document.querySelectorAll('input[name=t]:checked')].map(x=>x.value);"
                 + "if(!v.length){alert('Выберите хотя бы один тест');return;}"
                 + "fetch('/run',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'tests='+encodeURIComponent(v.join(','))});};"
@@ -1046,11 +1064,13 @@ public class WebUi {
                 + "copyBtn.innerText = 'Скопировано!';"
                 + "setTimeout(function(){ copyBtn.innerText = originalText; }, 2000);"
                 + "});};"
-                // Добавлен обработчик нажатия на кнопку очистки
                 + "clearBtn.onclick=function(){"
                 + "fetch('/clear', {method: 'POST'}).then(function() {"
                 + "document.getElementById('log').innerText = '';"
                 + "});};"
+                + "gitBtn.onclick=function(){"
+                + "fetch('/git-push', {method: 'POST'});"
+                + "};"
                 + "setInterval(function(){"
                 + "fetch('/status').then(r=>r.text()).then(t=>{"
                 + "document.getElementById('s').innerText='Статус: '+t;"
@@ -1062,9 +1082,9 @@ public class WebUi {
                 + "fetch('/logs').then(r=>r.text()).then(t=>{"
                 + "var l=document.getElementById('log');l.innerText=t;l.scrollTop=l.scrollHeight;"
                 + "var hasLog = t.trim().length > 0;"
-                // Управление состоянием кнопки очистки
                 + "clearBtn.disabled = isRunning || !hasLog;"
                 + "copyBtn.disabled = isRunning || !hasLog;"
+                + "gitBtn.disabled = isRunning;"
                 + "var allureLink = document.getElementById('allureLink');"
                 + "if(!hasLog){allureLink.style.pointerEvents='none';allureLink.style.opacity='0.5';}else{allureLink.style.pointerEvents='auto';allureLink.style.opacity='1';}"
                 + "});"
@@ -1146,6 +1166,108 @@ public class WebUi {
         send(ex, 200, "запущено");
     }
 
+    private static void handleGit(HttpExchange ex) throws IOException {
+        if (running) { send(ex, 200, "уже выполняется"); return; }
+        running = true;
+        synchronized (logBuffer) {
+            logBuffer.setLength(0);
+        }
+
+        new Thread(() -> {
+            try {
+                boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+
+                ProcessBuilder pbStatus = isWindows
+                        ? new ProcessBuilder("cmd", "/c", "git", "status", "--porcelain")
+                        : new ProcessBuilder("git", "status", "--porcelain");
+                pbStatus.directory(new File("."));
+                pbStatus.redirectErrorStream(true);
+                Process pStatus = pbStatus.start();
+
+                StringBuilder statusOut = new StringBuilder();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(pStatus.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        statusOut.append(line).append("\n");
+                    }
+                }
+                pStatus.waitFor();
+
+                String statusText = statusOut.toString().trim();
+                if (statusText.isEmpty()) {
+                    synchronized (logBuffer) {
+                        logBuffer.append("Нет изменений для коммита.\n");
+                    }
+                    return;
+                }
+
+                StringBuilder commitMsg = new StringBuilder("Auto-commit:");
+                String[] lines = statusText.split("\n");
+                for (String line : lines) {
+                    if (line.length() > 3) {
+                        String statusCode = line.substring(0, 2).trim();
+                        String fileName = line.substring(3).trim();
+                        String action = "изменен";
+                        if (statusCode.equals("??") || statusCode.equals("A")) action = "добавлен";
+                        else if (statusCode.equals("D")) action = "удален";
+                        commitMsg.append("\n- ").append(action).append(": ").append(fileName);
+                    }
+                }
+
+                synchronized (logBuffer) {
+                    logBuffer.append("Найдены изменения:\n").append(statusText).append("\n");
+                }
+
+                runGitCommand(isWindows, "add", ".");
+                runGitCommand(isWindows, "commit", "-m", commitMsg.toString());
+                runGitCommand(isWindows, "push");
+
+                synchronized (logBuffer) {
+                    logBuffer.append("Git операции успешно завершены.\n");
+                }
+
+            } catch (Exception e) {
+                synchronized (logBuffer) {
+                    logBuffer.append("Ошибка Git: ").append(e.getMessage()).append("\n");
+                }
+                e.printStackTrace();
+            } finally {
+                running = false;
+            }
+        }).start();
+        send(ex, 200, "запущено");
+    }
+
+    private static void runGitCommand(boolean isWindows, String... args) throws Exception {
+        String[] cmd = new String[args.length + (isWindows ? 3 : 1)];
+        if (isWindows) {
+            cmd[0] = "cmd"; cmd[1] = "/c"; cmd[2] = "git";
+            System.arraycopy(args, 0, cmd, 3, args.length);
+        } else {
+            cmd[0] = "git";
+            System.arraycopy(args, 0, cmd, 1, args.length);
+        }
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(new File("."));
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+
+        synchronized (logBuffer) {
+            logBuffer.append("> git ").append(String.join(" ", args)).append("\n");
+        }
+
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                synchronized (logBuffer) {
+                    logBuffer.append(line).append("\n");
+                }
+            }
+        }
+        p.waitFor();
+    }
+
     private static void handleStatus(HttpExchange ex) throws IOException {
         send(ex, 200, running ? "выполняется" : "ожидание");
     }
@@ -1158,7 +1280,6 @@ public class WebUi {
         send(ex, 200, currentLogs);
     }
 
-    // Новый метод для очистки буфера логов
     private static void handleClear(HttpExchange ex) throws IOException {
         synchronized (logBuffer) {
             logBuffer.setLength(0);
