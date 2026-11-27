@@ -1,6 +1,6 @@
 # СТРУКТУРА ПРОЕКТА ДЛЯ АНАЛИЗА ИИ
 # Корневой каталог: [[MASK_1]]
-# Сгенерировано: 2026-11-27 10:14:27
+# Сгенерировано: 2026-11-27 22:51:35
 ================================================================================
 
 ## ДЕРЕВО КАТАЛОГОВ
@@ -995,34 +995,54 @@ import java.nio.file.Files;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Встроенный веб-сервер для управления запуском автотестов,
+ * просмотра логов, обезличивания данных и работы с Git.
+ */
 public class WebUi {
 
+    // Флаг, показывающий, выполняется ли в данный момент какой-либо процесс (тесты или Git).
     private static volatile boolean running = false;
+    // Буфер для накопления текста логов, которые будут отображаться в браузере.
     private static final StringBuilder logBuffer = new StringBuilder();
+    // Глобальная переменная для хранения абсолютного пути к корню проекта.
     private static String projectRootPath = "";
 
     public static void main(String[] args) throws Exception {
-        // Определяем корень проекта при старте
+        // Определяем и сохраняем корневой путь проекта при старте приложения.
         projectRootPath = new File(".").getCanonicalPath();
 
+        // Создаем HTTP-сервер на порту 8080.
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
-        server.createContext("/", WebUi::handleIndex);
-        server.createContext("/run", WebUi::handleRun);
-        server.createContext("/status", WebUi::handleStatus);
-        server.createContext("/logs", WebUi::handleLogs);
-        server.createContext("/logs-obfuscated", WebUi::handleLogsObfuscated);
-        server.createContext("/clear", WebUi::handleClear);
-        server.createContext("/git-push", WebUi::handleGit);
-        server.createContext("/allure", WebUi::handleAllure);
+
+        // Регистрируем обработчики для различных эндпоинтов (URL-путей).
+        server.createContext("/", WebUi::handleIndex); // Главная страница
+        server.createContext("/run", WebUi::handleRun); // Запуск тестов
+        server.createContext("/status", WebUi::handleStatus); // Текущий статус выполнения
+        server.createContext("/logs", WebUi::handleLogs); // Получение сырого лога
+        server.createContext("/logs-obfuscated", WebUi::handleLogsObfuscated); // Получение обезличенного лога
+        server.createContext("/clear", WebUi::handleClear); // Очистка лога
+        server.createContext("/git-push", WebUi::handleGit); // Выполнение Git-операций
+        server.createContext("/allure", WebUi::handleAllure); // Раздача файлов отчета Allure
+
+        // Запускаем сервер.
         server.start();
         System.out.println("WebUI: http://localhost:8080");
+        // Блокируем основной поток, чтобы сервер работал бесконечно.
         Thread.currentThread().join();
     }
 
+    /**
+     * Проверяет, запущено ли приложение внутри Docker-контейнера.
+     * @return true, если приложение в Docker, иначе false.
+     */
     private static boolean isRunningInDocker() {
+        // Проверка наличия файла .dockerenv (стандартный признак Docker).
         if (new File("/.dockerenv").exists()) return true;
+        // Проверка переменной окружения.
         if ("true".equalsIgnoreCase(System.getenv("DOCKER_CONTAINER"))) return true;
         try {
+            // Проверка содержимого cgroups (для современных версий Docker/Kubernetes).
             File cgroup = new File("/proc/self/cgroup");
             if (cgroup.exists()) {
                 String content = new String(Files.readAllBytes(cgroup.toPath()), StandardCharsets.UTF_8);
@@ -1032,33 +1052,37 @@ public class WebUi {
         return false;
     }
 
+    /**
+     * Обезличивает текст лога, заменяя чувствительные данные на метки.
+     * @param text Исходный текст лога.
+     * @return Обезличенный текст.
+     */
     private static String obfuscateLog(String text) {
         if (text == null || text.isEmpty()) return text;
 
-        // 1. Замена конкретных данных из проекта
+        // Замена конкретных тестовых данных.
         text = text.replace("[[MASK_3]]", "[[MASK]]");
         text = text.replace("[[MASK_6]]", "[[MASK]]");
         text = text.replace("[[MASK_7]]", "[[MASK]]");
 
-        // 2. Замена корневого пути проекта на метку (сохраняя структуру папок)
+        // Замена корневого пути проекта (с учетом разных вариантов слэшей).
         if (!projectRootPath.isEmpty()) {
-            // Заменяем разные варианты слэшей для кроссплатформенности
             text = text.replace(projectRootPath, "[[PROJECT_ROOT]]");
             text = text.replace(projectRootPath.replace("\\", "/"), "[[PROJECT_ROOT]]");
             text = text.replace(projectRootPath.replace("/", "\\"), "[[PROJECT_ROOT]]");
         }
 
-        // 3. Замена оставшихся путей (если они не относятся к корню проекта)
+        // Замена оставшихся абсолютных путей (например, системных).
         text = Pattern.compile("[A-Za-z]:\\\\[^:*?\"<>|\\r\\n]+")
                 .matcher(text)
                 .replaceAll(Matcher.quoteReplacement("[[LOCAL_PATH]]"));
 
-        // 4. Замена IP-адресов
+        // Замена IP-адресов.
         text = Pattern.compile("\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b")
                 .matcher(text)
                 .replaceAll(Matcher.quoteReplacement("[[IP]]"));
 
-        // 5. Замена email
+        // Замена email-адресов.
         text = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
                 .matcher(text)
                 .replaceAll(Matcher.quoteReplacement("[[EMAIL]]"));
@@ -1066,9 +1090,16 @@ public class WebUi {
         return text;
     }
 
+    /**
+     * Обработчик главной страницы. Генерирует HTML и JavaScript интерфейс.
+     */
     private static void handleIndex(HttpExchange ex) throws IOException {
         boolean inDocker = isRunningInDocker();
+        // Определяем статус окружения для отображения в заголовке.
         String envStatus = inDocker ? " (в Docker)" : " (Local)";
+
+        // Кнопка Git добавляется в HTML только если запущено локально.
+        String gitButtonHtml = !inDocker ? "<button type='button' id='gitBtn' disabled>->Git</button>" : "";
 
         String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SauceDemo Tests" + envStatus + "</title>"
                 + "<style>pre{background:#f4f4f4;padding:10px;height:400px;overflow:auto;}</style></head><body>"
@@ -1081,7 +1112,7 @@ public class WebUi {
                 + "<button type='button' id='runBtn' disabled>Запустить выбранное</button>"
                 + "<button type='button' id='clearBtn' disabled>Очистить лог</button>"
                 + "<button type='button' id='copyBtn' disabled>Копировать лог</button>"
-                + "<button type='button' id='gitBtn' disabled>->Git</button>"
+                + gitButtonHtml
                 + "</div>"
                 + "<p id='s'>Статус: ожидание</p>"
                 + "<div id='reportLink' style='display:none; margin-top: 10px;'><a id='allureLink' href='/allure' target='_blank' style='font-size: 18px; font-weight: bold; pointer-events: none; opacity: 0.5;'>Открыть отчет Allure</a></div>"
@@ -1093,11 +1124,14 @@ public class WebUi {
                 + "var clearBtn=document.getElementById('clearBtn');"
                 + "var gitBtn=document.getElementById('gitBtn');"
                 + "var rLink=document.getElementById('reportLink');"
+                // Слушатель для активации/деактивации кнопки запуска в зависимости от чекбоксов.
                 + "document.querySelectorAll('input[name=t]').forEach(function(cb){cb.addEventListener('change',function(){var checked=document.querySelectorAll('input[name=t]:checked').length;btn.disabled=isRunning||(checked===0);});});"
+                // Обработчик кнопки запуска тестов.
                 + "btn.onclick=function(){"
                 + "var v=[...document.querySelectorAll('input[name=t]:checked')].map(x=>x.value);"
                 + "if(!v.length){alert('Выберите хотя бы один тест');return;}"
                 + "fetch('/run',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'tests='+encodeURIComponent(v.join(','))});};"
+                // Обработчик кнопки копирования (запрашивает обезличенный лог).
                 + "copyBtn.onclick=function(){"
                 + "fetch('/logs-obfuscated').then(r=>r.text()).then(text => {"
                 + "navigator.clipboard.writeText(text).then(function(){"
@@ -1106,13 +1140,14 @@ public class WebUi {
                 + "setTimeout(function(){ copyBtn.innerText = originalText; }, 2000);"
                 + "});"
                 + "});};"
+                // Обработчик кнопки очистки лога.
                 + "clearBtn.onclick=function(){"
                 + "fetch('/clear', {method: 'POST'}).then(function() {"
                 + "document.getElementById('log').innerText = '';"
                 + "});};"
-                + "gitBtn.onclick=function(){"
-                + "fetch('/git-push', {method: 'POST'});"
-                + "};"
+                // Обработчик кнопки Git (если она существует).
+                + "if(gitBtn){gitBtn.onclick=function(){fetch('/git-push', {method: 'POST'});};}"
+                // Периодический опрос статуса и логов.
                 + "setInterval(function(){"
                 + "fetch('/status').then(r=>r.text()).then(t=>{"
                 + "document.getElementById('s').innerText='Статус: '+t;"
@@ -1126,7 +1161,7 @@ public class WebUi {
                 + "var hasLog = t.trim().length > 0;"
                 + "clearBtn.disabled = isRunning || !hasLog;"
                 + "copyBtn.disabled = isRunning || !hasLog;"
-                + "gitBtn.disabled = isRunning;"
+                + "if(gitBtn){gitBtn.disabled = isRunning;}"
                 + "var allureLink = document.getElementById('allureLink');"
                 + "if(!hasLog){allureLink.style.pointerEvents='none';allureLink.style.opacity='0.5';}else{allureLink.style.pointerEvents='auto';allureLink.style.opacity='1';}"
                 + "});"
@@ -1136,8 +1171,13 @@ public class WebUi {
         send(ex, 200, html);
     }
 
+    /**
+     * Обработчик запуска тестов.
+     */
     private static void handleRun(HttpExchange ex) throws IOException {
         if (running) { send(ex, 200, "уже выполняется"); return; }
+
+        // Чтение тела POST-запроса для получения списка тестов.
         String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         String tests = "";
         for (String pair : body.split("&")) {
@@ -1147,15 +1187,19 @@ public class WebUi {
             }
         }
         final String testParam = tests;
+
         running = true;
+        // Очищаем буфер логов перед новым запуском.
         synchronized (logBuffer) {
             logBuffer.setLength(0);
         }
 
+        // Запускаем выполнение в отдельном потоке, чтобы не блокировать HTTP-сервер.
         new Thread(() -> {
             try {
                 boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
 
+                // Формируем команду для Maven.
                 ProcessBuilder testPb;
                 if (testParam.isEmpty()) {
                     testPb = isWindows
@@ -1167,9 +1211,10 @@ public class WebUi {
                             : new ProcessBuilder("mvn", "clean", "test", "-Dtest=" + testParam);
                 }
                 testPb.directory(new File("."));
-                testPb.redirectErrorStream(true);
+                testPb.redirectErrorStream(true); // Объединяем stdout и stderr.
                 Process p = testPb.start();
 
+                // Читаем вывод процесса построчно и добавляем в буфер.
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
@@ -1181,6 +1226,7 @@ public class WebUi {
                 }
                 p.waitFor();
 
+                // После тестов запускаем генерацию отчета Allure.
                 ProcessBuilder reportPb = isWindows
                         ? new ProcessBuilder("cmd", "/c", "mvn", "allure:report")
                         : new ProcessBuilder("mvn", "allure:report");
@@ -1208,6 +1254,9 @@ public class WebUi {
         send(ex, 200, "запущено");
     }
 
+    /**
+     * Обработчик Git-операций (проверка, коммит, пуш).
+     */
     private static void handleGit(HttpExchange ex) throws IOException {
         if (running) { send(ex, 200, "уже выполняется"); return; }
         running = true;
@@ -1219,6 +1268,7 @@ public class WebUi {
             try {
                 boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
 
+                // Получаем статус изменений в репозитории.
                 ProcessBuilder pbStatus = isWindows
                         ? new ProcessBuilder("cmd", "/c", "git", "status", "--porcelain")
                         : new ProcessBuilder("git", "status", "--porcelain");
@@ -1236,6 +1286,7 @@ public class WebUi {
                 pStatus.waitFor();
 
                 String statusText = statusOut.toString().trim();
+                // Если изменений нет, выводим сообщение и завершаем.
                 if (statusText.isEmpty()) {
                     synchronized (logBuffer) {
                         logBuffer.append("Нет изменений для коммита.\n");
@@ -1243,6 +1294,7 @@ public class WebUi {
                     return;
                 }
 
+                // Формируем текст коммита на основе списка измененных файлов.
                 StringBuilder commitMsg = new StringBuilder("Auto-commit:");
                 String[] lines = statusText.split("\n");
                 for (String line : lines) {
@@ -1260,6 +1312,7 @@ public class WebUi {
                     logBuffer.append("Найдены изменения:\n").append(statusText).append("\n");
                 }
 
+                // Выполняем последовательно add, commit, push.
                 runGitCommand(isWindows, "add", ".");
                 runGitCommand(isWindows, "commit", "-m", commitMsg.toString());
                 runGitCommand(isWindows, "push");
@@ -1280,6 +1333,9 @@ public class WebUi {
         send(ex, 200, "запущено");
     }
 
+    /**
+     * Вспомогательный метод для запуска команды Git и записи ее вывода в лог.
+     */
     private static void runGitCommand(boolean isWindows, String... args) throws Exception {
         String[] cmd = new String[args.length + (isWindows ? 3 : 1)];
         if (isWindows) {
@@ -1310,10 +1366,16 @@ public class WebUi {
         p.waitFor();
     }
 
+    /**
+     * Отдает текущий статус (выполняется или ожидание).
+     */
     private static void handleStatus(HttpExchange ex) throws IOException {
         send(ex, 200, running ? "выполняется" : "ожидание");
     }
 
+    /**
+     * Отдает сырой (необезличенный) лог для отображения на странице.
+     */
     private static void handleLogs(HttpExchange ex) throws IOException {
         String currentLogs;
         synchronized (logBuffer) {
@@ -1322,6 +1384,9 @@ public class WebUi {
         send(ex, 200, currentLogs);
     }
 
+    /**
+     * Отдает обезличенный лог для копирования в буфер обмена.
+     */
     private static void handleLogsObfuscated(HttpExchange ex) throws IOException {
         String currentLogs;
         synchronized (logBuffer) {
@@ -1331,6 +1396,9 @@ public class WebUi {
         send(ex, 200, obfuscated);
     }
 
+    /**
+     * Очищает буфер логов.
+     */
     private static void handleClear(HttpExchange ex) throws IOException {
         synchronized (logBuffer) {
             logBuffer.setLength(0);
@@ -1338,6 +1406,9 @@ public class WebUi {
         send(ex, 200, "очищено");
     }
 
+    /**
+     * Раздает статические файлы отчета Allure.
+     */
     private static void handleAllure(HttpExchange ex) throws IOException {
         String path = ex.getRequestURI().getPath();
         if (path.equals("/allure") || path.equals("/allure/")) {
@@ -1349,6 +1420,7 @@ public class WebUi {
             return;
         }
 
+        // Определяем MIME-тип по расширению файла.
         String mime = "text/plain";
         if (path.endsWith(".html")) mime = "text/html";
         else if (path.endsWith(".js")) mime = "application/javascript";
@@ -1366,6 +1438,9 @@ public class WebUi {
         try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
     }
 
+    /**
+     * Вспомогательный метод для отправки HTTP-ответа.
+     */
     private static void send(HttpExchange ex, int code, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().add("Content-Type", "text/html; charset=UTF-8");

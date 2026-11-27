@@ -8,30 +8,48 @@ import java.nio.file.Files;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Встроенный веб-сервер для управления запуском автотестов,
+ * просмотра логов, обезличивания данных, работы с Git и Docker.
+ */
 public class WebUi {
 
+    // Флаг, показывающий, выполняется ли в данный момент какой-либо процесс.
     private static volatile boolean running = false;
+    // Буфер для накопления текста логов, которые будут отображаться в браузере.
     private static final StringBuilder logBuffer = new StringBuilder();
+    // Глобальная переменная для хранения абсолютного пути к корню проекта.
     private static String projectRootPath = "";
 
     public static void main(String[] args) throws Exception {
-        // Определяем корень проекта при старте
+        // Определяем и сохраняем корневой путь проекта при старте приложения.
         projectRootPath = new File(".").getCanonicalPath();
 
+        // Создаем HTTP-сервер на порту 8080.
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
-        server.createContext("/", WebUi::handleIndex);
-        server.createContext("/run", WebUi::handleRun);
-        server.createContext("/status", WebUi::handleStatus);
-        server.createContext("/logs", WebUi::handleLogs);
-        server.createContext("/logs-obfuscated", WebUi::handleLogsObfuscated);
-        server.createContext("/clear", WebUi::handleClear);
-        server.createContext("/git-push", WebUi::handleGit);
-        server.createContext("/allure", WebUi::handleAllure);
+
+        // Регистрируем обработчики для различных эндпоинтов (URL-путей).
+        server.createContext("/", WebUi::handleIndex); // Главная страница
+        server.createContext("/run", WebUi::handleRun); // Запуск тестов
+        server.createContext("/status", WebUi::handleStatus); // Текущий статус выполнения
+        server.createContext("/logs", WebUi::handleLogs); // Получение сырого лога
+        server.createContext("/logs-obfuscated", WebUi::handleLogsObfuscated); // Получение обезличенного лога
+        server.createContext("/clear", WebUi::handleClear); // Очистка лога
+        server.createContext("/git-push", WebUi::handleGit); // Выполнение Git-операций
+        server.createContext("/docker-build", WebUi::handleDockerBuild); // Сборка и запуск Docker
+        server.createContext("/allure", WebUi::handleAllure); // Раздача файлов отчета Allure
+
+        // Запускаем сервер.
         server.start();
         System.out.println("WebUI: http://localhost:8080");
+        // Блокируем основной поток, чтобы сервер работал бесконечно.
         Thread.currentThread().join();
     }
 
+    /**
+     * Проверяет, запущено ли приложение внутри Docker-контейнера.
+     * @return true, если приложение в Docker, иначе false.
+     */
     private static boolean isRunningInDocker() {
         if (new File("/.dockerenv").exists()) return true;
         if ("true".equalsIgnoreCase(System.getenv("DOCKER_CONTAINER"))) return true;
@@ -45,33 +63,30 @@ public class WebUi {
         return false;
     }
 
+    /**
+     * Обезличивает текст лога, заменяя чувствительные данные на метки.
+     */
     private static String obfuscateLog(String text) {
         if (text == null || text.isEmpty()) return text;
 
-        // 1. Замена конкретных данных из проекта
         text = text.replace("terebok", "[[MASK]]");
         text = text.replace("standard_user", "[[MASK]]");
         text = text.replace("secret_sauce", "[[MASK]]");
 
-        // 2. Замена корневого пути проекта на метку (сохраняя структуру папок)
         if (!projectRootPath.isEmpty()) {
-            // Заменяем разные варианты слэшей для кроссплатформенности
             text = text.replace(projectRootPath, "[[PROJECT_ROOT]]");
             text = text.replace(projectRootPath.replace("\\", "/"), "[[PROJECT_ROOT]]");
             text = text.replace(projectRootPath.replace("/", "\\"), "[[PROJECT_ROOT]]");
         }
 
-        // 3. Замена оставшихся путей (если они не относятся к корню проекта)
         text = Pattern.compile("[A-Za-z]:\\\\[^:*?\"<>|\\r\\n]+")
                 .matcher(text)
                 .replaceAll(Matcher.quoteReplacement("[[LOCAL_PATH]]"));
 
-        // 4. Замена IP-адресов
         text = Pattern.compile("\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b")
                 .matcher(text)
                 .replaceAll(Matcher.quoteReplacement("[[IP]]"));
 
-        // 5. Замена email
         text = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
                 .matcher(text)
                 .replaceAll(Matcher.quoteReplacement("[[EMAIL]]"));
@@ -79,9 +94,16 @@ public class WebUi {
         return text;
     }
 
+    /**
+     * Обработчик главной страницы. Генерирует HTML и JavaScript интерфейс.
+     */
     private static void handleIndex(HttpExchange ex) throws IOException {
         boolean inDocker = isRunningInDocker();
-        String envStatus = inDocker ? " (в Docker)" : " (Local)";
+        String envStatus = inDocker ? " (Docker)" : " (Local)";
+
+        // Кнопки Git и Docker добавляются в HTML только если запущено локально.
+        String gitButtonHtml = !inDocker ? "<button type='button' id='gitBtn' disabled>->Git</button>" : "";
+        String dockerButtonHtml = !inDocker ? "<button type='button' id='dockerBtn' disabled>->Docker</button>" : "";
 
         String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SauceDemo Tests" + envStatus + "</title>"
                 + "<style>pre{background:#f4f4f4;padding:10px;height:400px;overflow:auto;}</style></head><body>"
@@ -94,7 +116,8 @@ public class WebUi {
                 + "<button type='button' id='runBtn' disabled>Запустить выбранное</button>"
                 + "<button type='button' id='clearBtn' disabled>Очистить лог</button>"
                 + "<button type='button' id='copyBtn' disabled>Копировать лог</button>"
-                + "<button type='button' id='gitBtn' disabled>->Git</button>"
+                + gitButtonHtml
+                + dockerButtonHtml
                 + "</div>"
                 + "<p id='s'>Статус: ожидание</p>"
                 + "<div id='reportLink' style='display:none; margin-top: 10px;'><a id='allureLink' href='/allure' target='_blank' style='font-size: 18px; font-weight: bold; pointer-events: none; opacity: 0.5;'>Открыть отчет Allure</a></div>"
@@ -105,6 +128,7 @@ public class WebUi {
                 + "var copyBtn=document.getElementById('copyBtn');"
                 + "var clearBtn=document.getElementById('clearBtn');"
                 + "var gitBtn=document.getElementById('gitBtn');"
+                + "var dockerBtn=document.getElementById('dockerBtn');"
                 + "var rLink=document.getElementById('reportLink');"
                 + "document.querySelectorAll('input[name=t]').forEach(function(cb){cb.addEventListener('change',function(){var checked=document.querySelectorAll('input[name=t]:checked').length;btn.disabled=isRunning||(checked===0);});});"
                 + "btn.onclick=function(){"
@@ -123,9 +147,8 @@ public class WebUi {
                 + "fetch('/clear', {method: 'POST'}).then(function() {"
                 + "document.getElementById('log').innerText = '';"
                 + "});};"
-                + "gitBtn.onclick=function(){"
-                + "fetch('/git-push', {method: 'POST'});"
-                + "};"
+                + "if(gitBtn){gitBtn.onclick=function(){fetch('/git-push', {method: 'POST'});};}"
+                + "if(dockerBtn){dockerBtn.onclick=function(){fetch('/docker-build', {method: 'POST'});};}"
                 + "setInterval(function(){"
                 + "fetch('/status').then(r=>r.text()).then(t=>{"
                 + "document.getElementById('s').innerText='Статус: '+t;"
@@ -139,7 +162,8 @@ public class WebUi {
                 + "var hasLog = t.trim().length > 0;"
                 + "clearBtn.disabled = isRunning || !hasLog;"
                 + "copyBtn.disabled = isRunning || !hasLog;"
-                + "gitBtn.disabled = isRunning;"
+                + "if(gitBtn){gitBtn.disabled = isRunning;}"
+                + "if(dockerBtn){dockerBtn.disabled = isRunning;}"
                 + "var allureLink = document.getElementById('allureLink');"
                 + "if(!hasLog){allureLink.style.pointerEvents='none';allureLink.style.opacity='0.5';}else{allureLink.style.pointerEvents='auto';allureLink.style.opacity='1';}"
                 + "});"
@@ -149,8 +173,12 @@ public class WebUi {
         send(ex, 200, html);
     }
 
+    /**
+     * Обработчик запуска тестов.
+     */
     private static void handleRun(HttpExchange ex) throws IOException {
         if (running) { send(ex, 200, "уже выполняется"); return; }
+
         String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         String tests = "";
         for (String pair : body.split("&")) {
@@ -160,6 +188,7 @@ public class WebUi {
             }
         }
         final String testParam = tests;
+
         running = true;
         synchronized (logBuffer) {
             logBuffer.setLength(0);
@@ -221,6 +250,9 @@ public class WebUi {
         send(ex, 200, "запущено");
     }
 
+    /**
+     * Обработчик Git-операций.
+     */
     private static void handleGit(HttpExchange ex) throws IOException {
         if (running) { send(ex, 200, "уже выполняется"); return; }
         running = true;
@@ -293,6 +325,138 @@ public class WebUi {
         send(ex, 200, "запущено");
     }
 
+    /**
+     * Обработчик сборки и запуска Docker-контейнера.
+     */
+    private static void handleDockerBuild(HttpExchange ex) throws IOException {
+        if (running) { send(ex, 200, "уже выполняется"); return; }
+        running = true;
+        synchronized (logBuffer) {
+            logBuffer.setLength(0);
+        }
+
+        new Thread(() -> {
+            try {
+                boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+                if (!isWindows) {
+                    synchronized (logBuffer) {
+                        logBuffer.append("Автоматическая сборка и запуск через интерфейс реализованы только для Windows.\n");
+                    }
+                    return;
+                }
+
+                File driverFactory = new File("src/main/java/com/saucedemo/utils/DriverFactory.java");
+
+                // 1. Раскомментирование headless в DriverFactory.java
+                if (driverFactory.exists()) {
+                    String content = Files.readString(driverFactory.toPath());
+                    content = content.replace("//       options.addArguments(\"--headless=new\");", "options.addArguments(\"--headless=new\");");
+                    Files.writeString(driverFactory.toPath(), content);
+                    synchronized (logBuffer) {
+                        logBuffer.append("В DriverFactory.java раскомментирован headless режим.\n");
+                    }
+                }
+
+                // 2. Проверка и запуск Docker Desktop
+                synchronized (logBuffer) {
+                    logBuffer.append("Проверка запущен ли Docker...\n");
+                }
+                if (!isDockerRunning(isWindows)) {
+                    synchronized (logBuffer) {
+                        logBuffer.append("Docker не запущен. Попытка запустить Docker Desktop...\n");
+                    }
+                    ProcessBuilder pbStart = new ProcessBuilder("cmd", "/c", "start", "\"\"", "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe");
+                    pbStart.start();
+
+                    synchronized (logBuffer) {
+                        logBuffer.append("Ожидание запуска Docker (до 60 секунд)...\n");
+                    }
+                    int waitCount = 0;
+                    while (!isDockerRunning(isWindows) && waitCount < 30) {
+                        Thread.sleep(2000);
+                        waitCount++;
+                    }
+                }
+
+                if (!isDockerRunning(isWindows)) {
+                    synchronized (logBuffer) {
+                        logBuffer.append("Ошибка: Docker так и не запустился.\n");
+                    }
+                    return;
+                }
+                synchronized (logBuffer) {
+                    logBuffer.append("Docker запущен. Сборка образа...\n");
+                }
+
+                // 3. Сборка образа
+                ProcessBuilder buildPb = new ProcessBuilder("cmd", "/c", "docker", "build", "-t", "saucedemo-autotests", ".");
+                buildPb.directory(new File("."));
+                buildPb.redirectErrorStream(true);
+                Process p = buildPb.start();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        synchronized (logBuffer) {
+                            logBuffer.append(line).append("\n");
+                        }
+                    }
+                }
+                p.waitFor();
+                synchronized (logBuffer) {
+                    logBuffer.append("Сборка завершена.\n");
+                }
+
+                // 4. Возврат DriverFactory.java в исходное состояние (комментируем обратно)
+                if (driverFactory.exists()) {
+                    String content = Files.readString(driverFactory.toPath());
+                    content = content.replace("options.addArguments(\"--headless=new\");", "//       options.addArguments(\"--headless=new\");");
+                    Files.writeString(driverFactory.toPath(), content);
+                    synchronized (logBuffer) {
+                        logBuffer.append("В DriverFactory.java возвращен закомментированный headless режим.\n");
+                    }
+                }
+
+                // 5. Открытие cmd с прописанной командой (без автоматического запуска)
+                synchronized (logBuffer) {
+                    logBuffer.append("Открытие окна cmd с командой запуска контейнера...\n");
+                }
+                ProcessBuilder runPb = new ProcessBuilder("cmd", "/c", "start", "cmd.exe", "/k", "echo docker run --rm -p 8080:8080 saucedemo-autotests");
+                runPb.start();
+
+                synchronized (logBuffer) {
+                    logBuffer.append("Готово. Команда запуска выведена в открывшемся окне.\n");
+                }
+
+            } catch (Exception e) {
+                synchronized (logBuffer) {
+                    logBuffer.append("Ошибка Docker: ").append(e.getMessage()).append("\n");
+                }
+                e.printStackTrace();
+            } finally {
+                running = false;
+            }
+        }).start();
+        send(ex, 200, "запущено");
+    }
+
+    /**
+     * Вспомогательный метод для проверки, запущен ли Docker.
+     */
+    private static boolean isDockerRunning(boolean isWindows) {
+        try {
+            ProcessBuilder pb = isWindows ? new ProcessBuilder("cmd", "/c", "docker", "info") : new ProcessBuilder("docker", "info");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            p.waitFor();
+            return p.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Вспомогательный метод для запуска команды Git.
+     */
     private static void runGitCommand(boolean isWindows, String... args) throws Exception {
         String[] cmd = new String[args.length + (isWindows ? 3 : 1)];
         if (isWindows) {
@@ -323,10 +487,16 @@ public class WebUi {
         p.waitFor();
     }
 
+    /**
+     * Отдает текущий статус.
+     */
     private static void handleStatus(HttpExchange ex) throws IOException {
         send(ex, 200, running ? "выполняется" : "ожидание");
     }
 
+    /**
+     * Отдает сырой лог.
+     */
     private static void handleLogs(HttpExchange ex) throws IOException {
         String currentLogs;
         synchronized (logBuffer) {
@@ -335,6 +505,9 @@ public class WebUi {
         send(ex, 200, currentLogs);
     }
 
+    /**
+     * Отдает обезличенный лог.
+     */
     private static void handleLogsObfuscated(HttpExchange ex) throws IOException {
         String currentLogs;
         synchronized (logBuffer) {
@@ -344,6 +517,9 @@ public class WebUi {
         send(ex, 200, obfuscated);
     }
 
+    /**
+     * Очищает буфер логов.
+     */
     private static void handleClear(HttpExchange ex) throws IOException {
         synchronized (logBuffer) {
             logBuffer.setLength(0);
@@ -351,6 +527,9 @@ public class WebUi {
         send(ex, 200, "очищено");
     }
 
+    /**
+     * Раздает статические файлы отчета Allure.
+     */
     private static void handleAllure(HttpExchange ex) throws IOException {
         String path = ex.getRequestURI().getPath();
         if (path.equals("/allure") || path.equals("/allure/")) {
@@ -379,6 +558,9 @@ public class WebUi {
         try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
     }
 
+    /**
+     * Вспомогательный метод для отправки HTTP-ответа.
+     */
     private static void send(HttpExchange ex, int code, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().add("Content-Type", "text/html; charset=UTF-8");
