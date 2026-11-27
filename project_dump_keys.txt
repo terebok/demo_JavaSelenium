@@ -10,3 +10,4 @@
 [[MASK_6]] = standard_user
 [[MASK_7]] = secret_sauce
 [[IP_8]] = 1.9.22.1
+[[LOCAL_PATH_9]] = C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe
