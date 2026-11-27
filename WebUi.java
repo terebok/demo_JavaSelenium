@@ -18,6 +18,7 @@ public class WebUi {
         server.createContext("/status", WebUi::handleStatus);
         server.createContext("/logs", WebUi::handleLogs);
         server.createContext("/clear", WebUi::handleClear);
+        server.createContext("/git-push", WebUi::handleGit);
         server.createContext("/allure", WebUi::handleAllure);
         server.start();
         System.out.println("WebUI: http://localhost:8080");
@@ -33,7 +34,6 @@ public class WebUi {
                 + "<label><input type='checkbox' name='t' value='ApiTest#testMainPageAvailability'> ApiTest.testMainPageAvailability</label><br>"
                 + "<button type='submit' id='runBtn' disabled>Запустить выбранные</button>"
                 + "</form>"
-                // Обернули кнопки управления логами в div и выровняли по правому краю
                 + "<div style='text-align: right; margin-top: 10px; margin-bottom: 5px;'>"
                 + "<button type='button' id='clearBtn' disabled>Очистить лог</button>"
                 + "<button type='button' id='copyBtn' disabled>Копировать лог</button>"
@@ -41,11 +41,15 @@ public class WebUi {
                 + "<p id='s'>Статус: ожидание</p>"
                 + "<div id='reportLink' style='display:none; margin-top: 10px;'><a id='allureLink' href='/allure' target='_blank' style='font-size: 18px; font-weight: bold; pointer-events: none; opacity: 0.5;'>Открыть отчет Allure</a></div>"
                 + "<pre id='log'></pre>"
+                + "<div style='text-align: right; margin-top: 10px;'>"
+                + "<button type='button' id='gitBtn' disabled>Git</button>"
+                + "</div>"
                 + "<script>"
                 + "var isRunning = false;"
                 + "var btn=document.getElementById('runBtn');"
                 + "var copyBtn=document.getElementById('copyBtn');"
                 + "var clearBtn=document.getElementById('clearBtn');"
+                + "var gitBtn=document.getElementById('gitBtn');"
                 + "var rLink=document.getElementById('reportLink');"
                 + "document.querySelectorAll('input[name=t]').forEach(function(cb){cb.addEventListener('change',function(){var checked=document.querySelectorAll('input[name=t]:checked').length;btn.disabled=isRunning||(checked===0);});});"
                 + "document.getElementById('f').onsubmit=function(e){e.preventDefault();"
@@ -59,11 +63,13 @@ public class WebUi {
                 + "copyBtn.innerText = 'Скопировано!';"
                 + "setTimeout(function(){ copyBtn.innerText = originalText; }, 2000);"
                 + "});};"
-                // Добавлен обработчик нажатия на кнопку очистки
                 + "clearBtn.onclick=function(){"
                 + "fetch('/clear', {method: 'POST'}).then(function() {"
                 + "document.getElementById('log').innerText = '';"
                 + "});};"
+                + "gitBtn.onclick=function(){"
+                + "fetch('/git-push', {method: 'POST'});"
+                + "};"
                 + "setInterval(function(){"
                 + "fetch('/status').then(r=>r.text()).then(t=>{"
                 + "document.getElementById('s').innerText='Статус: '+t;"
@@ -75,9 +81,9 @@ public class WebUi {
                 + "fetch('/logs').then(r=>r.text()).then(t=>{"
                 + "var l=document.getElementById('log');l.innerText=t;l.scrollTop=l.scrollHeight;"
                 + "var hasLog = t.trim().length > 0;"
-                // Управление состоянием кнопки очистки
                 + "clearBtn.disabled = isRunning || !hasLog;"
                 + "copyBtn.disabled = isRunning || !hasLog;"
+                + "gitBtn.disabled = isRunning;"
                 + "var allureLink = document.getElementById('allureLink');"
                 + "if(!hasLog){allureLink.style.pointerEvents='none';allureLink.style.opacity='0.5';}else{allureLink.style.pointerEvents='auto';allureLink.style.opacity='1';}"
                 + "});"
@@ -159,6 +165,108 @@ public class WebUi {
         send(ex, 200, "запущено");
     }
 
+    private static void handleGit(HttpExchange ex) throws IOException {
+        if (running) { send(ex, 200, "уже выполняется"); return; }
+        running = true;
+        synchronized (logBuffer) {
+            logBuffer.setLength(0);
+        }
+
+        new Thread(() -> {
+            try {
+                boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+
+                ProcessBuilder pbStatus = isWindows
+                        ? new ProcessBuilder("cmd", "/c", "git", "status", "--porcelain")
+                        : new ProcessBuilder("git", "status", "--porcelain");
+                pbStatus.directory(new File("."));
+                pbStatus.redirectErrorStream(true);
+                Process pStatus = pbStatus.start();
+
+                StringBuilder statusOut = new StringBuilder();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(pStatus.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        statusOut.append(line).append("\n");
+                    }
+                }
+                pStatus.waitFor();
+
+                String statusText = statusOut.toString().trim();
+                if (statusText.isEmpty()) {
+                    synchronized (logBuffer) {
+                        logBuffer.append("Нет изменений для коммита.\n");
+                    }
+                    return;
+                }
+
+                StringBuilder commitMsg = new StringBuilder("Auto-commit:");
+                String[] lines = statusText.split("\n");
+                for (String line : lines) {
+                    if (line.length() > 3) {
+                        String statusCode = line.substring(0, 2).trim();
+                        String fileName = line.substring(3).trim();
+                        String action = "изменен";
+                        if (statusCode.equals("??") || statusCode.equals("A")) action = "добавлен";
+                        else if (statusCode.equals("D")) action = "удален";
+                        commitMsg.append("\n- ").append(action).append(": ").append(fileName);
+                    }
+                }
+
+                synchronized (logBuffer) {
+                    logBuffer.append("Найдены изменения:\n").append(statusText).append("\n");
+                }
+
+                runGitCommand(isWindows, "add", ".");
+                runGitCommand(isWindows, "commit", "-m", commitMsg.toString());
+                runGitCommand(isWindows, "push");
+
+                synchronized (logBuffer) {
+                    logBuffer.append("Git операции успешно завершены.\n");
+                }
+
+            } catch (Exception e) {
+                synchronized (logBuffer) {
+                    logBuffer.append("Ошибка Git: ").append(e.getMessage()).append("\n");
+                }
+                e.printStackTrace();
+            } finally {
+                running = false;
+            }
+        }).start();
+        send(ex, 200, "запущено");
+    }
+
+    private static void runGitCommand(boolean isWindows, String... args) throws Exception {
+        String[] cmd = new String[args.length + (isWindows ? 3 : 1)];
+        if (isWindows) {
+            cmd[0] = "cmd"; cmd[1] = "/c"; cmd[2] = "git";
+            System.arraycopy(args, 0, cmd, 3, args.length);
+        } else {
+            cmd[0] = "git";
+            System.arraycopy(args, 0, cmd, 1, args.length);
+        }
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(new File("."));
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+
+        synchronized (logBuffer) {
+            logBuffer.append("> git ").append(String.join(" ", args)).append("\n");
+        }
+
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                synchronized (logBuffer) {
+                    logBuffer.append(line).append("\n");
+                }
+            }
+        }
+        p.waitFor();
+    }
+
     private static void handleStatus(HttpExchange ex) throws IOException {
         send(ex, 200, running ? "выполняется" : "ожидание");
     }
@@ -171,7 +279,6 @@ public class WebUi {
         send(ex, 200, currentLogs);
     }
 
-    // Новый метод для очистки буфера логов
     private static void handleClear(HttpExchange ex) throws IOException {
         synchronized (logBuffer) {
             logBuffer.setLength(0);
