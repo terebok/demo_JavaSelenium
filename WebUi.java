@@ -25,25 +25,39 @@ public class WebUi {
         Thread.currentThread().join();
     }
 
+    private static boolean isRunningInDocker() {
+        if (new File("/.dockerenv").exists()) return true;
+        if ("true".equalsIgnoreCase(System.getenv("DOCKER_CONTAINER"))) return true;
+        try {
+            File cgroup = new File("/proc/self/cgroup");
+            if (cgroup.exists()) {
+                String content = new String(Files.readAllBytes(cgroup.toPath()), StandardCharsets.UTF_8);
+                if (content.contains("docker") || content.contains("kubepods")) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     private static void handleIndex(HttpExchange ex) throws IOException {
-        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SauceDemo Tests</title>"
+        boolean inDocker = isRunningInDocker();
+        String envStatus = inDocker ? " (в Docker)" : " (Local)";
+
+        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>SauceDemo Tests" + envStatus + "</title>"
                 + "<style>pre{background:#f4f4f4;padding:10px;height:400px;overflow:auto;}</style></head><body>"
-                + "<h1>SauceDemo автотесты</h1>"
-                + "<form id='f'>"
+                + "<h1>SauceDemo автотесты" + envStatus + "</h1>"
+                + "<div>"
                 + "<label><input type='checkbox' name='t' value='LoginTest#testSuccessfulLogin'> LoginTest.testSuccessfulLogin</label><br>"
-                + "<label><input type='checkbox' name='t' value='ApiTest#testMainPageAvailability'> ApiTest.testMainPageAvailability</label><br>"
-                + "<button type='submit' id='runBtn' disabled>Запустить выбранные</button>"
-                + "</form>"
-                + "<div style='text-align: right; margin-top: 10px; margin-bottom: 5px;'>"
+                + "<label><input type='checkbox' name='t' value='ApiTest#testMainPageAvailability'> ApiTest.testMainPageAvailability</label>"
+                + "</div>"
+                + "<div style='margin-top: 10px; display: flex; gap: 10px; align-items: center;'>"
+                + "<button type='button' id='runBtn' disabled>Запустить выбранное</button>"
                 + "<button type='button' id='clearBtn' disabled>Очистить лог</button>"
                 + "<button type='button' id='copyBtn' disabled>Копировать лог</button>"
+                + "<button type='button' id='gitBtn' disabled>->Git</button>"
                 + "</div>"
                 + "<p id='s'>Статус: ожидание</p>"
                 + "<div id='reportLink' style='display:none; margin-top: 10px;'><a id='allureLink' href='/allure' target='_blank' style='font-size: 18px; font-weight: bold; pointer-events: none; opacity: 0.5;'>Открыть отчет Allure</a></div>"
                 + "<pre id='log'></pre>"
-                + "<div style='text-align: right; margin-top: 10px;'>"
-                + "<button type='button' id='gitBtn' disabled>Git</button>"
-                + "</div>"
                 + "<script>"
                 + "var isRunning = false;"
                 + "var btn=document.getElementById('runBtn');"
@@ -52,7 +66,7 @@ public class WebUi {
                 + "var gitBtn=document.getElementById('gitBtn');"
                 + "var rLink=document.getElementById('reportLink');"
                 + "document.querySelectorAll('input[name=t]').forEach(function(cb){cb.addEventListener('change',function(){var checked=document.querySelectorAll('input[name=t]:checked').length;btn.disabled=isRunning||(checked===0);});});"
-                + "document.getElementById('f').onsubmit=function(e){e.preventDefault();"
+                + "btn.onclick=function(){"
                 + "var v=[...document.querySelectorAll('input[name=t]:checked')].map(x=>x.value);"
                 + "if(!v.length){alert('Выберите хотя бы один тест');return;}"
                 + "fetch('/run',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'tests='+encodeURIComponent(v.join(','))});};"
