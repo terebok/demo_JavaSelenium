@@ -350,10 +350,16 @@ public class WebUi {
                 // 1. Раскомментирование headless в DriverFactory.java
                 if (driverFactory.exists()) {
                     String content = Files.readString(driverFactory.toPath());
-                    content = content.replace("//       options.addArguments(\"--headless=new\");", "options.addArguments(\"--headless=new\");");
-                    Files.writeString(driverFactory.toPath(), content);
-                    synchronized (logBuffer) {
-                        logBuffer.append("В DriverFactory.java раскомментирован headless режим.\n");
+                    String newContent = content.replaceAll("//\\s*options\\.addArguments\\(\"--headless=new\"\\);", "options.addArguments(\"--headless=new\");");
+                    if (!content.equals(newContent)) {
+                        Files.writeString(driverFactory.toPath(), newContent);
+                        synchronized (logBuffer) {
+                            logBuffer.append("В DriverFactory.java сняты комментарии с options.addArguments(\"--headless=new\"); и файл сохранен.\n");
+                        }
+                    } else {
+                        synchronized (logBuffer) {
+                            logBuffer.append("В DriverFactory.java не найдено закомментированной строки headless для снятия комментариев.\n");
+                        }
                     }
                 }
 
@@ -406,13 +412,15 @@ public class WebUi {
                     logBuffer.append("Сборка завершена.\n");
                 }
 
-                // 4. Возврат DriverFactory.java в исходное состояние (комментируем обратно)
+                // 4. Возврат DriverFactory.java в исходное состояние
                 if (driverFactory.exists()) {
                     String content = Files.readString(driverFactory.toPath());
-                    content = content.replace("options.addArguments(\"--headless=new\");", "//       options.addArguments(\"--headless=new\");");
-                    Files.writeString(driverFactory.toPath(), content);
-                    synchronized (logBuffer) {
-                        logBuffer.append("В DriverFactory.java возвращен закомментированный headless режим.\n");
+                    String newContent = content.replace("options.addArguments(\"--headless=new\");", "//       options.addArguments(\"--headless=new\");");
+                    if (!content.equals(newContent)) {
+                        Files.writeString(driverFactory.toPath(), newContent);
+                        synchronized (logBuffer) {
+                            logBuffer.append("В DriverFactory.java проставлены комментарии обратно на options.addArguments(\"--headless=new\"); и файл сохранен.\n");
+                        }
                     }
                 }
 
