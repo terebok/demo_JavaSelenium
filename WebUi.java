@@ -325,6 +325,8 @@ public class WebUi {
         send(ex, 200, "запущено");
     }
 
+
+    // ------------------------------------------------------------------------------------
     /**
      * Обработчик сборки и запуска Docker-контейнера.
      */
@@ -347,7 +349,7 @@ public class WebUi {
 
                 File driverFactory = new File("src/main/java/com/saucedemo/utils/DriverFactory.java");
 
-                // 1. Раскомментирование headless в DriverFactory.java
+// 1. Раскомментирование headless в DriverFactory.java
                 if (driverFactory.exists()) {
                     String content = Files.readString(driverFactory.toPath());
                     String newContent = content.replaceAll("//\\s*options\\.addArguments\\(\"--headless=new\"\\);", "options.addArguments(\"--headless=new\");");
@@ -363,7 +365,7 @@ public class WebUi {
                     }
                 }
 
-                // 2. Проверка и запуск Docker Desktop
+// 2. Проверка и запуск Docker Desktop
                 synchronized (logBuffer) {
                     logBuffer.append("Проверка запущен ли Docker...\n");
                 }
@@ -394,7 +396,7 @@ public class WebUi {
                     logBuffer.append("Docker запущен. Сборка образа...\n");
                 }
 
-                // 3. Сборка образа
+// 3. Сборка образа
                 ProcessBuilder buildPb = new ProcessBuilder("cmd", "/c", "docker", "build", "-t", "saucedemo-autotests", ".");
                 buildPb.directory(new File("."));
                 buildPb.redirectErrorStream(true);
@@ -412,10 +414,10 @@ public class WebUi {
                     logBuffer.append("Сборка завершена.\n");
                 }
 
-                // 4. Возврат DriverFactory.java в исходное состояние
+// 4. Возврат DriverFactory.java в исходное состояние
                 if (driverFactory.exists()) {
                     String content = Files.readString(driverFactory.toPath());
-                    String newContent = content.replace("options.addArguments(\"--headless=new\");", "//       options.addArguments(\"--headless=new\");");
+                    String newContent = content.replace("options.addArguments(\"--headless=new\");", "// options.addArguments(\"--headless=new\");");
                     if (!content.equals(newContent)) {
                         Files.writeString(driverFactory.toPath(), newContent);
                         synchronized (logBuffer) {
@@ -424,7 +426,7 @@ public class WebUi {
                     }
                 }
 
-                // 5. Открытие cmd с прописанной командой (без автоматического запуска)
+// 5. Открытие cmd с прописанной командой (без автоматического запуска)
                 synchronized (logBuffer) {
                     logBuffer.append("Открытие окна cmd с командой запуска контейнера...\n");
                 }
@@ -446,14 +448,7 @@ public class WebUi {
         }).start();
         send(ex, 200, "запущено");
     }
-
-
-
-
-
-
-
-
+    // ------------------------------------------------------------------------------------
 
 
     /**

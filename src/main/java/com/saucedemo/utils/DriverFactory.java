@@ -10,7 +10,7 @@ public class DriverFactory {
         ChromeOptions options = new ChromeOptions();
         options.addArguments("--start-maximized");
         options.addArguments("--disable-notifications");
-       // //       options.addArguments("--headless=new");
+        //       options.addArguments("--headless=new");
         // Изменено: аргумент headless удален для явного запуска браузера
         options.addArguments("--window-size=1920,1080");
         options.addArguments("--no-sandbox");
